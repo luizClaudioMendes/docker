@@ -34,6 +34,34 @@ Table of contents
       - [NAMES](#names)
     - [comando 'sleep'](#comando-sleep)
     - [Processo de execuçao do docker](#processo-de-execuçao-do-docker)
+  - [Outros comandos importantes](#outros-comandos-importantes)
+    - [docker stop](#docker-stop)
+    - [docker start](#docker-start)
+    - [docker exec](#docker-exec)
+    - [sair do container](#sair-do-container)
+    - [docker pause](#docker-pause)
+    - [docker unpause](#docker-unpause)
+    - [parar um container instantaneamente com -t=0](#parar-um-container-instantaneamente-com--t0)
+    - [docker rm](#docker-rm)
+  - [Mapeando portas](#mapeando-portas)
+    - [docker samples](#docker-samples)
+    - [terminal detached](#terminal-detached)
+    - [isolamento das interfaces de rede (localhost)](#isolamento-das-interfaces-de-rede-localhost)
+    - [docker rm --force](#docker-rm---force)
+    - [docker run -P (expor as portas)](#docker-run--p-expor-as-portas)
+    - [docker port](#docker-port)
+    - [mapear manualmente uma porta (-p 8080:80)](#mapear-manualmente-uma-porta--p-808080)
+  - [o que aprendemos?](#o-que-aprendemos-1)
+  - [Entendendo imagens](#entendendo-imagens)
+    - [o que sao imagens?](#o-que-sao-imagens)
+    - [docker images ou docker image ls](#docker-images-ou-docker-image-ls)
+    - [docker inspect](#docker-inspect)
+    - [docker history](#docker-history)
+    - [imagens sao read only](#imagens-sao-read-only)
+    - [container sao imagens com uma camada de R/W](#container-sao-imagens-com-uma-camada-de-rw)
+  - [Criando a primeira imagem](#criando-a-primeira-imagem)
+    - [docker build](#docker-build)
+      - [projeto exemplo](#projeto-exemplo)
   
 
 ## Conhecendo o problema
@@ -516,3 +544,545 @@ Mas no caso de agora, vimos que se mantivermos no mínimo um processo, o nosso c
 
 Entendemos agora o que mantém um container vivo, em execução versus o que mantém um container parado e o que o docker run faz para que consigamos executar efetivamente um container quando não possuímos uma imagem localmente.
 
+## Outros comandos importantes
+Agora vamos entender mais alguns comandos que serão muito úteis para nós no decorrer desse curso para que consigamos desenvolver nosso conhecimento com o Docker.
+
+Até então nós temos a criação de containers, já vimos o que o docker run faz, como ele funciona; a questão do comando padrão, que a princípio é executado quando executamos uma imagem. E vimos como sobrescrever esse comando, no caso colocando um sleep de um dia.
+
+Mas o que mais é importante de saber? Tem uma coisa que ainda precisamos entender. Eu vou limpar a tela e fazer um docker ps novamente. Temos nosso container em execução com nosso sleep de um dia.
+
+Ele está em execução, nós mantivemos um terminal travado para isso, o que é um pouco chato. Mas o que acontece, por exemplo, se eu quiser fazer um fluxo um pouco mais utilizável, por assim dizer?
+
+Vamos fechar esse terminal que está travando o nosso. Se eu der um docker ps agora, ele vai manter o meu container em execução, porque eu fechei o outro.
+
+### docker stop
+Mas se eu quiser parar a execução desse container, eu posso executar o comando docker stop e passar para ele o ID ou o nome do container que eu quero. Eu posso copiar o ID ou o nome do container que eu quero parar e colar logo após o comando docker stop.
+
+```
+docker stop 912812761ec
+```
+
+Ele vai demorar um tempo e vai parar a execução desse container. Então no momento em que damos um docker ps de novo, não teremos mais nenhum output. Não temos mais nenhum container em execução.
+
+### docker start
+E se eu quiser por algum motivo reexecutar o meu container que foi parado? Vou fazer docker ps –a.
+
+Eu posso pegar o ID do meu container e simplesmente fazer docker start, e passar o ID dele mais uma vez. Nesse momento ele vai voltar a executar o meu container.
+
+```
+docker start 912812761ec
+```
+
+Se fizermos um docker ps de novo, ele está em execução. Ele foi criado há 11 minutos, mas o status dele é de execução só há 4 segundos.
+
+Então conseguimos parar e reexecutar os nossos containers com esses dois comandos, o docker start e o docker stop.
+
+Para que eu consiga a fazer inicialização a partir de um start é preciso que meu container esteja em estado de parada. E vice-versa: se eu quiser parar ele precisa estar no estado de execução.
+
+Vamos um pouco mais além. O meu container do Ubuntu que estamos usando para exemplificar está em execução. Mas eu como é que eu interajo com ele? Porque a princípio nós não estamos conseguindo fazer nada. Ele está em execução, mas não está servindo para nada.
+
+Então como é que eu posso interagir com esse container de maneira interativa para que eu consiga fazer alguma coisa?
+
+### docker exec 
+Existe um comando, também dentro desse universo todo do Docker, que é o docker exec. Eu posso simplesmente falar que eu posso executar algum comando dentro do meu container em modo interativo.
+
+Então para que seja em modo interativo eu vou adicionar docker exec -it ao comando. O I é de modo interativo, e o T é que eu quero acessar o tty, o terminal padrão desse container.
+
+```
+docker exec -it 912812761ec bash
+```
+E eu coloco também o ID do container que eu quero fazer isso, e em seguida eu posso executar algum comando.
+
+Qual comando eu posso usar para navegar dentro do meu Ubuntu, que estamos assumindo esse conhecimento de terminal? Eu posso executar simplesmente um bash.
+
+Ele alterou meu terminal, agora ele está com um usuário root nessa máquina, e se formos comparar é exatamente o ID do meu container.
+
+Então agora eu estou dentro do terminal do meu container. Então tudo que eu fizer agora, como vimos naquela questão dos namespaces, estará devidamente isolado.
+
+Se voltarmos à apresentação, por exemplo, nós conseguiríamos ver que na verdade tudo está devidamente isolado por conta dos namespaces. Nós temos processo isolado, rede isolada, a intercomunicação de processos, file system, o Kernel.
+
+Se voltarmos para o terminal e acessarmos, por exemplo, a home desse container e criarmos um arquivo touch eu-sou-um-arquivo.txt, o que vai acontecer? Eu vou dar um ls e vai aparecer o meu arquivo.
+
+Mas se eu vier na minha máquina e abrir minha home não aparece nada, porque são sistemas de arquivos isolados, graças ao namespace de MNT. É o file system que está completamente isolado.
+
+Nós podemos fazer diversas coisas agora nesse Ubuntu, porque ele vai estar devidamente isolado do nosso sistema. Nós poderíamos executar os comandos apt, com apt-get update, apt-get install, conforme nossa demanda, e vai estar tudo isolado do nosso sistema original.
+
+Vou parar essa execução do apt update, porque não estamos nos importando com isso e vou limpar a tela com “Ctrl + L”. Tudo que fizermos estará dentro desse terminal, desse container.
+
+No caso do Ubuntu, podemos até executar o comando top, e ele vai mostrar os processos que estão em execução, do nosso usuário root, que é exatamente nosso sleep que estava mantendo o nosso container em execução, e o nosso bash, que estamos escutando agora.
+
+Então nosso container está com dois processos neste momento no nosso usuário root.
+
+### sair do container
+Vou parar novamente e dar um “Ctrl + L”. Vou dar um “Ctrl + D” para sairmos do container e um docker ps de novo. Ele ainda vai estar em execução porque o nosso sleep ainda está em execução.
+
+Eu vou dar um docker stop nesse meu container e reexecutar. E vou dar um docker start mais uma vez para vermos o que acontece.
+
+Mais uma vez vou executar aquele comando para acessarmos o terminal em modo interativo. E nesse momento, se eu voltar para minha home e der um ls, está aparecendo meu arquivo.
+
+Agora vou dar um top. Ele simplesmente resetou toda minha árvore de processos, ele deu um sinal de SIGKILL, por assim dizer, em toda minha árvore de processos, porque eu parei todos os processos e os recomecei. Então o tempo de execução deles foi zerado. Toda a contagem do processo foi reiniciada.
+
+### docker pause
+Então essa é uma questão que quando executamos o stop acontece. Vou sair do terminal mais uma vez e executar outro comando como, por exemplo, docker pause e passar o ID do nosso container de novo. Com isso nós podemos também pausar o nosso container.
+
+```
+docker pause 912812761ec
+```
+
+Se fizermos docker ps ele vai aparecer ainda, mas no status de pausado, e não de parado. E se dermos um docker ps de novo, repara que a contagem do status dele continua.
+
+### docker unpause
+
+Se eu tentar acessar o container agora eu não vou conseguir, porque ele está pausado. E eu posso simplesmente despausar esse container com o comando docker unpause.
+
+```
+docker unpause 912812761ec
+```
+
+E se eu tentar acessar agora eu vou conseguir. E se eu der um top vemos que nossa árvore de processos a princípio foi mantida, porque ele mantém todo o nosso fluxo de execução, assim como nossos arquivos. Mas essa é uma situação menos agressiva em relação ao stop que podemos fazer.
+
+Então nós vimos como podemos parar um container, dispará-lo, no caso, voltar a execução. Vimos como podemos pausar e despausar e a diferença entre cada um desses tipos de operação.
+
+E vimos também que devidamente os nossos containers estão isolados do nosso host original, graças à utilização do namespace NMT.
+
+Eu vou fazer um último detalhe para ficarmos com uma pulga atrás da orelha. Eu vou dar um docker ps. Mas agora eu vou pegar esse meu container ID e fazer um docker stop mais uma vez.
+
+### parar um container instantaneamente com -t=0
+E se eu quiser evitar que ele fique demorando 10 segundos para executar eu posso colocar a flag -t=0, antes do nome do meu container, para que não tenha nenhum tempo para parar, porque por padrão ele espera 10 segundos para nosso container parar de maneira saudável. Mas se quisermos nos apressar, podemos colocar o -t=0, que ele vai parar instantaneamente.
+
+```
+docker stop -t=0 912812761ec
+```
+
+### docker rm
+E agora eu posso remover esse meu container com docker rm, que é o comando de remoção, passando o ID do meu container. Com isso ele vai remover.
+
+```
+docker rm 912812761ec
+```
+
+Se eu criar mais uma vez com o nosso docker run Ubuntu sleep 1d e manter um sleep de um dia, ele vai travar nosso terminal. E por fim, se eu abrir um novo e fizer um docker exec –it 48aac971d7fb bash neste nosso terminal que foi criado, nós acessamos o nosso terminal. Se entrarmos na nossa home com ls o nosso arquivo sumiu.
+
+```diff
++ Como o nosso container deixou de existir e ele estava completamente isolado dos outros containers e do nosso host, todo o conteúdo dele foi perdido.
+```
+
+Então o container tem essa questão de ser efêmero nesse sentido. Os containers devem estar sempre prontos para deixar de ser executados, e nós devemos estar prontos para perder esses dados caso não configuremos nada em relação a isso. Então é uma questão que também veremos mais à frente, como lidar com a persistência de arquivos em container.
+
+E para finalizar, mais um comando interessante é o seguinte: ao invés de ter que fazer docker exec toda hora depois de dar um sleep, teria que ter uma maneira mais prática de já começarmos a executar nosso container e mantê-lo em execução sem precisar ficar dando sleep, sem precisar ficar roubando nesse sentido.
+
+Nós podemos simplesmente dar um docker run ubuntu bash, mas indo mais além, podemos falar que queremos executá-lo em modo interativo, assim como nosso exec: docker run -it ubuntu bash. E vamos simplesmente criar um container novo, e já estamos diretamente no terminal dele.
+
+```
+docker run -it ubuntu bash
+```
+
+Se abrirmos mais um terminal e dermos um docker ps, nós temos o que criamos com o sleep de um dia ainda há pouco, e o nosso bash que acabamos de criar há 10 segundos.
+
+Se fizermos qualquer coisa dentro dele, como ls, criar algum arquivo na home, dá certo. Mas no momento em que eu sair desse terminal ele vai matar o meu container, por aquele motivo que explicamos. Agora não há mais nenhum processo, antes tinha o nosso bash, agora não tem mais o nosso terminal que estava travando a execução de um processo para que o container se mantivesse em execução.
+
+Então a partir de agora, no momento em que finalizamos a execução do nosso único processo, o container morreu.
+
+Nós vimos agora alguns pontos que são muito importantes nessa parte de ciclo de vida dos containers, e entendemos que por eles serem devidamente isolados, nós não conseguimos manter as informações de alguma maneira. Mas vamos responder isso também em breve, fique tranquilo, fique tranquila.
+
+Essa aula foi para entendermos mais alguns comandos que são muito úteis e interessantes, e alguns parâmetros que podemos e devemos utilizar com o Docker. 
+
+## Mapeando portas
+Agora veremos um exemplo mais visual para vermos todo o fluxo, e veremos como interagir efetivamente com nosso container para ver uma saída, um output real, mais bonito, para realmente vermos como devemos interagir com um container.
+
+Ao invés de voltarmos a executar docker run com Ubuntu e hello-world, vamos um pouco mais além. Vamos executar um exemplo prático de uma aplicação web cuja saída vamos conseguir visualizar através do nosso navegador.
+
+### docker samples
+Que aplicação é essa? Se voltarmos no Docker Hub, existe um grupo de usuários, uma organização chamada “dockersamples”, que disponibiliza diversos tipos de aplicação a fim de exemplificar a utilização do Docker, um pouco mais bonitas e elegantes.
+
+Então repara que ao contrário da nossa imagem do Ubuntu, essa imagem do “dockersamples” não é oficial.
+
+E além de ela não ter aquele símbolo de verificado, como no Ubuntu, quando uma imagem não é feita por usuários reconhecidos pela comunidade ela segue o seguinte padrão: vai ter um nome do usuário ou organização barra o nome da imagem. Então conseguimos reconhecer que essa imagem não é oficial por conta desse padrão.
+
+Então é uma boa prática você sempre tentar manter a utilização de imagens oficiais dentro do seu projeto o máximo possível, mas nesse caso estamos utilizando essa imagem a fim de exemplificar e visualizar o Docker em execução com um container.
+
+Eu vou copiar mais uma vez o nome dessa imagem e vou fazer docker run, passando o dockersamples/static-site.
+
+```
+docker run dockersamples/static-site
+```
+
+Mas vimos quando executamos o Ubuntu que se simplesmente executarmos um docker run e o nosso container ficar em execução, assim como fizemos com o sleep naquele momento, ele vai travar o nosso terminal.
+
+### terminal detached
+Então se eu quiser executar esse comando e manter o comando em background no terminal, para que eu consiga manter o terminal em execução sem travar, eu posso passar a flag -d, de detached.
+
+```
+docker run -d dockersamples/static-site
+```
+
+```diff
++ Então ele vai executar o container baseado nessa imagem, mas não vai travar o terminal. 
+```
+
+Vamos ver o que vai acontecer. Ele vai efetuar o download das camadas necessárias para que esse container baseado nessa imagem “dockersample/static-site” execute.
+
+Nós já vimos esse fluxo, ele está indo no Docker Hub, validando todas as camadas que ele precisa para fazer a execução desse container, que é basicamente essa imagem que ele encontrou. E está fazendo a verificação depois de fazer todo o download e extração das camadas na nossa máquina.
+
+Então ele terminou a extração, fez o download, e repare que ele não travou nosso terminal, graças à flag -d. Mas agora se eu executar um docker ps, vamos ver o que vai acontecer.
+
+Nós temos nosso docker ps, nosso ID do container, nossa imagem baseada, o comando que ele manteve em execução; que ele foi criado há 22 segundos e que ele está em execução há 19 segundos.
+
+Então ao contrário do Ubuntu e do “hello-world”, por exemplo, a imagem que foi usada para criação desse container definiu que o comando para o container ser executado trava o terminal.
+
+Então esse comando que começa com /bin/sh –c, é um comando que mantém um processo vivo dentro do terminal do nosso container.
+
+Então o container em si vai continuar em execução. Se fizermos docker ps várias vezes, a aplicação em si está em execução, graças ao comando padrão que foi executado quando o container subiu.
+
+E agora temos a nossa coluna de portas falando que a nossa aplicação está sendo executada na porta 80 e na 443, além do nosso nome, que é “friendly_lamarr”.
+
+### isolamento das interfaces de rede (localhost)
+Então se nossa aplicação está sendo executada na porta 80, vamos abrir no nosso navegador o nosso “localhost:80”. Não acessou. Por quê? Mais uma vez voltando à nossa apresentação, graças aos namespaces, nesse caso principalmente ao NET, nós temos um isolamento das interfaces de rede.
+
+Então a porta 80 do meu container não é exatamente uma porta que já está mapeada na minha máquina, no meu host. Eu não vou conseguir acessá-la diretamente assim, elas estão isoladas.
+
+Então vamos voltar ao nosso terminal para entender o que está acontecendo. Precisamos visualizar o seguinte: essa porta 80 é de uso do container, e é a porta 80 de dentro da interface de rede do container. Se eu quiser acessá-la de outras maneiras, nós precisamos expor essa porta de alguma maneira.
+
+Mas antes disso inclusive, precisamos fazer outra coisa. O nosso container já está em execução. Nós vamos parar e remover esse container de uma vez só, então podemos ser um pouco mais agressivos.
+
+### docker rm --force
+Ao invés de fazer o docker stop e depois o docker rm, podemos copiar o ID e fazer docker rm 1b6d75073457, passar diretamente o ID e acrescentar --force. Assim ele vai parar e remover o container de uma vez só. Agora se eu fizer docker ps, não tem mais nenhum container em execução.
+
+```
+docker rm 123344212312 --force
+```
+
+### docker run -P (expor as portas)
+Vamos executar agora mais uma vez o docker run –d -P dockersamples/static-site. Só que ao invés de só executarmos esse comando mais uma vez, agora vamos colocar a flag -P, com P maiúsculo.
+
+```
+docker run –d -P dockersamples/static-site
+```
+
+Vamos descobrir agora o que essa flag vai fazer. Ele vai executar o nosso container, sem travar mais uma vez, por conta do -d; e ele não fez o download porque ele já tinha o conteúdo na nossa máquina agora.
+
+E se fizermos um docker ps, ele está fazendo um mapeamento maluco na nossa coluna de portas, que está um pouco difícil de entender. Mas o resto é a mesma coisa.
+
+### docker port
+Vamos executar um comando agora docker port b0e93e405db6 seguido do ID, que é um comando voltado para mostrar como está o mapeamento de portas de um container em relação ao host.
+
+```
+docker port b0e93e405db6
+```
+
+Então vamos passar o container, e agora ele está falando que a porta 80 do meu container foi mapeada para a porta 49154 do meu host.
+
+```
+443/tcp -> 0.0.0.0:49153
+443/tcp -> :::49153
+80/tcp -> 0.0.0.0:49154
+80/tcp -> :::49154
+```
+
+Isso significa que se agora no meu navegador eu executar o “http://localhost:49154”, nós conseguimos acessar o nosso container. O conteúdo do nosso container foi acessado, porque agora fizemos um mapeamento de uma porta interna do container para uma porta do nosso host.
+
+E no fim das contas nós poderíamos ter feito isso também de uma maneira mais bem definida. Vamos executar o nosso docker rm, passando o ID do nosso container com --force. Vamos executar um novo container.
+
+Como eu matei o container, se voltarmos para o navegador e dermos um “F5”, não tem mais o container, não tem mais conteúdo.
+
+### mapear manualmente uma porta (-p 8080:80)
+Mas se executarmos o docker run -d -p dockersanples/static-site mais uma vez, só que agora com a flag -p com P minúsculo, nós conseguimos fazer um mapeamento específico de uma porta do nosso host.
+
+Por exemplo, vamos mapear a porta 8080 do nosso host. Ela deve refletir em qual porta do nosso container?
+
+```
+docker run -d -p 8080:80 dockersanples/static-site
+```
+
+Nós vimos que por padrão ele expôs naquelas colunas de porta as portas 80 e 443. Então quero que a porta 8080 da minha máquina reflita na porta 80 do meu container.
+
+Ele vai executar. E agora, se voltarmos para o navegador e acessarmos “localhost:8080”, conseguimos fazer esse mapeamento de uma porta agora específica do nosso host para o nosso container.
+
+Voltando na nossa apresentação mais uma vez, nós temos esse isolamento de rede, mas conseguimos fazer um mapeamento para que consigamos acessar o conteúdo do nosso container e vê-lo de maneira que consigamos validar o que está acontecendo.
+
+Fazemos isso para que não fiquemos às cegas do que está sendo executado dentro do nosso container e para que, no fim das contas, nós consigamos expor nossa aplicação também para que algum usuário consiga acessar.
+
+Nessa aula fizemos essa parte de voltar a execução e entender mais alguns atalhos, como a flag -d, por exemplo, que mantém nosso terminal destravado; e também fazer o mapeamento de portas entre o nosso host e o nosso container.
+
+## o que aprendemos?
+* o Docker Hub é um grande repositorio de imagens que podemos utilizar
+* a base dos containers sao as imagens
+* como utilizar comandos acerca do ciclo de vida dos containers, como: docker start, para iniciar um container que esteja parado; docker stop para parar um que esteja rodando; docker pause para pausar um container e docker unpause para iniciar um container pausado
+* mapear portas de um container com as flags -p e -P
+
+## Entendendo imagens
+Chegou o grande momento de explicar o que são as imagens. Nós vamos entender efetivamente agora o que são as imagens, como elas funcionam, como elas viram containers e como criar nossas próprias imagens, porque não podemos depender só do trabalho alheio para desenvolver o nosso.
+
+Então chegou agora a hora de entender o que são as imagens. Por enquanto nós estamos aceitando que as imagens são uma receita para criar um container. Mas efetivamente como elas funcionam?
+
+### o que sao imagens?
+Uma imagem nada mais é do que um conjunto de camadas. 
+
+É um conjunto de camadas, e quando juntamos essas camadas nós formamos imagens.
+
+E essas camadas em si são independentes, cada uma tem seu respectivo ID, por exemplo, cada uma tem o seu respectivo identificador.
+
+Então vamos voltar mais uma vez para o caso do dockersamples no nosso terminal para visualizarmos.
+
+### docker images ou docker image ls
+Quando fazemos um docker run na nossa imagem, nós podemos ver agora as imagens que temos baixadas no nosso sistema através do comando docker images, ou docker images ls.
+
+```
+docker images
+docker image ls
+```
+
+Dando um docker images eu posso ver que tenho baixada a nossa imagem “dockersamples/static-site”, com a tag latest e seu respectivo ID. E ela foi criada há 5 anos pelo grupo do dockersamples. E o tamanho dela é de 191 MB.
+
+### docker inspect
+Nós podemos ir um pouco mais além. Podemos dar o comando docker inspect em uma imagem. Vou fazer novamente o docker images para copiar o ID da imagem. E agora vou fazer docker inspect, passando o identificador do que nós queremos inspecionar.
+
+```
+docker inspect 1231234332
+```
+
+Nós temos diversas informações. Tem um conjunto muito grande de informação que podemos saber detalhadamente sobre determinado recurso dentro do nosso Docker.
+
+Temos o ID, qual é a tag do repositório, o digest que foi utilizado para validação da imagem, se tem alguma imagem que é um parent, uma imagem pai ou mãe, a data de criação, o container, container config. Então temos diversas informações acerca dos recursos que podemos ter dentro do Docker.
+
+Inclusive, no final nós conseguimos ver mais informações na parte de layers, que são as camadas. Mas podemos ir um pouco mais além. Tem um comando específico para ver quais são as camadas de uma imagem. Vou limpar o terminal.
+
+### docker history
+Temos o comando docker history. Vou fazer docker images para pegar mais uma vez o ID. E vamos fazer o comando docker history, passando esse ID. Nós temos a nossa imagem, que é a f589ccde7957, e ele mostra todas as camadas. Ela tem 13 camadas para essa imagem.
+
+```
+docker history f589ccde7957
+```
+
+E quando essas camadas são aglutinadas, empilhadas umas nas outras, elas formam essa imagem final que é “dockersamples/static-site”.
+
+E caso alguma outra imagem venha a depender desses camadas, nós conseguimos reutilizá-las. Vamos entender isso daqui a pouco.
+
+Mas ele mostra detalhadamente qual é o tamanho de cada uma dessas camadas, a ordem de cada uma delas, o command, workdir, copy. Nós conseguimos ver também a data de criação. Conseguimos ver todas essas informações e entender o que está acontecendo.
+
+Mas agora que nós entendemos que uma imagem é um conjunto de camadas empilhadas para formar determinada regra de execução de um container, voltando à nossa apresentação, vamos ver como podemos visualizar um pouco melhor.
+
+Quando fizemos nosso docker run pela primeira vez ou simplesmente um docker pull para não executar o container, mas só baixar a imagem, nós fazemos o download das nossas imagens, das nossas camadas.
+
+Mas pode ser que, por exemplo, como eu falei para vocês agora, no nosso host nós já tenhamos algumas das camadas que queremos. Então no momento em que fizermos um pull ou um run, que vai fazer um pull consequentemente, nós vamos fazer simplesmente download só das camadas que necessitamos.
+
+Então o Docker é inteligente o suficiente para reutilizar essas camadas para compor novas imagens.
+
+Então conseguimos ter uma performance muito boa nesse sentido, já que não precisaremos ter informação duplicada ou triplicada, enfim. Porque nós conseguimos reutilizar as camadas em outras imagens. Isso por si só já é muito interessante. Então no fim das contas, conseguimos ter essa reutilização.
+
+### imagens sao read only
+Mas o que mais podemos ver na parte da criação de imagens? No fim das contas, quando temos a nossa imagem, ela é read only. Isso significa que não conseguimos modificar as camadas dessa imagem depois que ela foi criada.
+
+Então voltando ao nosso container, no momento em que nós temos essa imagem “dockersamples/static-site”, ela é imutável, assim como, por exemplo, a imagem que temos do nosso Ubuntu.
+
+Vou fazer mais uma vez docker run ubuntu –it bash para executar de modo interativo o nosso bash. Eu já tinha apagado a imagem, e veremos como fazer isso aos poucos, mas vamos baixar a camada necessária para ter a nossa imagem de execução para que consigamos executar nosso container do Ubuntu. Ele baixou, extraiu e vai abrir o nosso terminal.
+
+Ele deu um erro porque eu coloquei na ordem errada. O correto é docker run –it ubuntu bash.
+
+Nós vimos que tínhamos criado na nossa home, por exemplo, um arquivo qualquer com o comando touch um-arquivo-qualquer.txt. Nós estamos meio que escrevendo dentro do container.
+
+Mas como estamos conseguindo fazer isso se a imagem que gera o nosso container é apenas para leitura, ou read only? Se ela é bloqueada para escrita como é que o container consegue escrever informação dentro dela?
+
+### container sao imagens com uma camada de R/W
+Porque no fim das contas, quando criamos o container, o container nada mais é do que uma imagem com uma camada adicional de read-write, de leitura e escrita.
+
+Então quando criamos um container nós criamos uma camada temporária em cima da imagem, onde conseguimos escrever informações. E no momento em que esse container é deletado, essa camada extra também é deletada.
+
+Por isso que quando fizemos aquele experimento anteriormente, a nossa informação dentro do container era perdida quando nosso container era apagado. Porque essa camada é temporária, bem fina e leve para que o container tenha um ambiente de execução muito leve e fácil de ser executado.
+
+E agora voltamos naquela primeira pergunta da primeira parte desse curso, que era por que os containers são tão leves?
+
+```diff
++ Além da parte de eles serem simplesmente processos dentro do nosso sistema, nós também podemos falar que quando um container entra em execução, nós estamos sempre reaproveitando a mesma imagem.
+```
+
+Porque como a imagem é apenas de leitura, nós podemos ter um, dois, 100 ou 10 mil containers baseados na mesma imagem. A diferença é que cada um desses containers vai ter só uma camada diferente de um para o outro de read-write.
+
+E como essa camada é extremamente leve, a fim de manter essa performance, nós temos uma reutilização da imagem para múltiplos containers.
+
+Então no fim das contas o que acontece é que quando definimos um container ou outro baseado na mesma imagem também logo em seguida, o tamanho do container no fim das contas vai ser só o tamanho da camada de escrita que estamos gerando para ele, porque a imagem em si será reutilizada para cada um deles.
+
+E isso é muito legal. Nós veremos um experimento prático em breve, conforme formos avançando na criação e no fluxo das nossas imagens.
+
+Mas basicamente agora nós entendemos porque efetivamente o container é tão leve e otimizado. Porque ele consegue reaproveitar as camadas das imagens prévias que já temos.
+
+E quando criamos novos containers ele simplesmente só reutiliza as mesmas imagens e camadas, consequentemente, e utiliza a camada de read-write para utilizar de maneira mais performática o que ele já tem no ecossistema do Docker. Isso por si só é muito legal.
+
+E no fim das contas, basicamente é isso. Vamos entender ainda a partir de agora como definir um arquivo chamado “dockerfile” que vai nos ajudar a criar nossas próprias imagens, e no fim das contas como gerar os nossos containers através das imagens que vamos criar.
+
+Agora desmistificamos efetivamente o que é uma imagem, como transformar uma imagem num container e porque o container é tão leve.
+
+E ainda vai ficar mais fácil de entender conforme formos avançando e criando a nossa própria imagem e vermos como são as etapas de criar uma camada, uma imagem, transformar em container.
+
+## Criando a primeira imagem
+Agora vamos criar nossa primeira imagem. Vimos o que é uma imagem, como ela vira um container, qual a diferença de imagem para container.
+
+Mas precisamos entender agora como criar nossa imagem efetivamente para não dependermos 100% de imagens de outras pessoas diretamente. Nós vimos na nossa apresentação que precisamos no fim das contas seguir esse fluxo.
+
+Nós precisamos definir esse arquivo que é o Dockerfile. E a partir dele vamos criar nossa imagem. E imposta nossa imagem basta executar usando run para que o container seja gerado a partir da imagem.
+
+Voltando ao nosso projeto como um todo, nós temos uma aplicação Node. Não precisa se preocupar, nós não vamos entrar em nenhum detalhe específico de Node e de nenhuma linguagem de programação, você não precisa saber Node.
+
+Só estamos usando como exemplo para termos uma aplicação efetivamente para empacotar e transformar numa imagem e depois num container. Não precisa se preocupar quanto a isso.
+
+O que nós queremos no fim das contas é que quando formos executar nosso container e acessarmos via host, por exemplo, mapeando as portas, que tenhamos essa visualização, que é a nossa aplicação realmente em execução.
+
+Mas não queremos simplesmente clicar duas vezes no arquivo e abrir. Nós queremos um servidor que disponibiliza essa aplicação para nós. Então nós precisamos de alguma maneira colocar todo esse conteúdo dentro de uma imagem, instalar o Node, que será responsável por executar o servidor.
+
+E no fim das contas, quando nosso container executar, queremos que ele execute algum comando que mantenha esse servidor em execução.
+
+Então o que precisamos fazer de início é o seguinte: eu estou utilizando o Visual Studio Code para fazer a edição de texto nesse caso, mas você pode usar o da sua preferência.
+
+O que vou fazer é criar um novo arquivo dentro da nossa pasta do nosso exemplo, que estará disponível para você fazer o download. E dentro dessa pasta vou criar um arquivo chamado “Dockerfile”, que é basicamente o arquivo que nós vamos criar. E vou dar um “Enter”.
+
+Repara na parte superior esquerda que o VS Code tem esse charme de reconhecer que é um arquivo Dockerfile. E agora nós vamos simplesmente, dentro desse arquivo, definir como vai ser a criação da nossa imagem. O que nós queremos fazer?
+
+Nós queremos que dentro do nosso projeto como um todo nós tenhamos o Node para que consigamos rodar um servidor.
+
+Então se queremos usar o Node como base para nossa aplicação, nós podemos pegar emprestado do que já desenvolveram. Então vamos fazer o pull dessa imagem já existente para que possamos utilizar no nosso projeto, e a partir daí só fazer as nossas modificações para customizar o projeto à nossa maneira.
+
+No fim das contas nós precisamos do Node. Mas como nós colocamos o Node dentro da nossa imagem por padrão? Nós podemos colocar a princípio um Ubuntu, e dentro desse Ubuntu podemos instalar o Node e fazer toda a configuração necessária.
+
+Mas lembra que não precisamos ter necessariamente um sistema operacional dentro do nosso container. Nós podemos simplesmente utilizar alguma imagem que disponibilize o Node para nós, por exemplo, a própria imagem do Node no Docker Hub, que é uma imagem oficial, inclusive.
+
+Se olharmos a descrição como um todo, tem todas as versões do Node que nós podemos definir, como as versões 16, 17, 14, 12.
+
+Então o que nós podemos fazer nesse cenário? Nós podemos simplesmente falar que queremos pegar uma dessas versões do Node para que possamos executar o nosso projeto, usar essa imagem como base para a nossa. Então a partir da imagem que nós vamos definir nós vamos começar a usar a nossa.
+
+Como podemos pegar essa imagem emprestado? Por exemplo, queremos usar o Node na versão 14, então dentro do nosso “Dockerfile” eu quero pegar a partir do Node na versão 14. Como eu explicito a versão? Utilizando dois pontos e a versão que eu quero: FROM Node:14. Então a partir do Node na versão 14.
+
+```
+FROM node:14
+```
+
+Como eu sei que é a versão 14? Porque na documentação da imagem do Node ele está mostrando quais são as tags suportadas, inclusive a 14. E a partir do Node na versão 14, o que nós queremos fazer? Queremos colocar todo o nosso projeto, que são esses arquivos, menos o próprio “Dockerfile”, dentro dessa imagem. Então nós queremos copiar esse conteúdo do nosso host para a nossa imagem.
+
+Para isso podemos simplesmente colocar COPY. Nós queremos copiar todo o conteúdo do nosso diretório atual. Em que diretório está o nosso “Dockerfile”? No diretório “exemplo.node”.
+
+Então todo o conjunto do nosso diretório atual nós queremos copiar para algum diretório dentro do nosso container, por exemplo, para uma pasta chamada “/app-node”, só para termos a distinção do que nós queremos fazer: COPY . /app-node.
+
+Então a partir desse momento nós estamos copiando esse conteúdo do diretório do nosso host para o diretório de dentro da nossa imagem que vai virar um container, chamada “/app-node”.
+
+```
+FROM node:14
+COPY . /app-node
+```
+
+Nós queremos executar o comando RUN npm install. Só que esse comando terá que ser executado dentro do nosso diretório /app-node, para que consigamos instalar as dependências da nossa aplicação.
+
+Caso você não conheça Node, esse comando está sendo responsável só por instalar as dependências que o nosso projeto precisa em um projeto Node. Então basicamente estamos instalando as dependências e o Node está resolvendo isso automaticamente.
+
+```
+FROM node:14
+COPY . /app-node
+RUN npm install
+```
+
+E por fim nós queremos que o ponto de entrada do nosso container, ao executar esta imagem e começar a ter seu container devidamente em execução, seja startar a aplicação, então eu faço ENTRYPOINT npm start.
+
+```
+FROM node:14
+COPY . /app-node
+RUN npm install
+ENTRYPOINT npm start
+```
+
+E isso também tem que ser executado dentro desse diretório /app-node. Só que nós teríamos que ficar passando em todos os lugares o “/app-node”. Será que podemos resolver isso de uma maneira mais simples?
+
+Eu quero que, por exemplo, esses comandos todos, por padrão, sejam executados no meu diretório que eu estou atualmente. E como é que eu defino o diretório que a imagem vai tratar como padrão? Qual será o meu diretório de trabalho, por assim dizer?
+
+Para isso eu tenho a instrução WORKDIR, e com ela podemos definir o nosso diretório padrão: WORKDIR /app-node.
+
+```
+FROM node:14
+WORKDIR /app-node
+COPY . /app-node
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Inclusive, no nosso COPY eu posso fazer um COPY de ponto. Esse ponto é o nosso diretório atual dentro do nosso host, para ponto também, que vai ser o nosso diretório atual dentro da nossa imagem: COPY . .. E qual será nosso diretório atual? O nosso /app-node, que foi definido através do nosso WORKDIR.
+
+```
+FROM node:14
+WORKDIR /app-node
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Então o que nós estamos fazendo? Nós estamos definindo que vamos utilizar imagem do Node na versão 14 como base para nossa imagem. E nós vamos definir o nosso diretório de trabalho padrão como sendo o /app-node.
+
+Vamos copiar do diretório atual, onde está o nosso “Dockerfile” do nosso host, que é a pasta “exemplo-node”, para a pasta atual dentro da nossa imagem “/app-node” que foi definida dentro do nosso WORKDIR.
+
+E vamos executar o comando npm install enquanto a imagem estiver sendo criada. Esse comando será executado na etapa de criação da imagem. Então esse npm install será executado enquanto a imagem estiver sendo criada.
+
+E quando o container for executado a partir dessa imagem, o comando executado vai ser o npm start. Vamos dar um “Ctrl + S” agora, vamos ao nosso terminal e vamos acessar cd Desktop/exemplo-node/.
+
+### docker build
+Como é que a partir desse Dockerfile eu posso gerar uma imagem? Através do comando docker build.
+
+```
+docker build -t danielartine/app-node:1.0
+```
+
+Também passamos o -t para podermos criar um nome, etiquetar nossa imagem. No caso vou colocar o meu nome, então docker build -t danielartine/app-node:1. Com o :1 nós podemos explicitar qual é a versão que estamos criando. Eu vou colocar a versão 1.0 só para ficar mais bonito. Então docker build ´t danielartine/app-node:1.0.
+
+Em qual contexto tudo isso terá que ser executado? No contexto de diretório atual, ou seja, ponto, que é a referência ao diretório atual: docker build -t danielartine/app-node:1.0 ..
+
+Eu dou um “Enter”, e no Docker Hub, nesse exato momento, ele vai pegar a imagem do Node na versão 14 e baixar. Então ele vai pegar todo esse conteúdo para a nossa máquina, como já vimos que o Docker faz, e vai construir uma nova imagem utilizando essa como base.
+
+Então no momento em que isso terminar nós vamos executar o comando docker history para ver o que ele vai fazer no fim das contas e ver como essa imagem vai se comportar dentro do nosso sistema.
+
+Com o que precisamos nos preocupar agora? Fazendo um breve apanhado no nosso Dockerfile, ele está na etapa FROM Node:14, onde ele foi no Docker Hub e pegou a imagem do Node na versão 14. É isso que ele está fazendo agora.
+
+Mas um ponto interessante: você pode me perguntar como eu sei dessas instruções, como eu as deduzi. Essa é uma pergunta muito boa.
+
+Nós podemos entender tudo isso através da própria documentação do Docker, que eu vou mostrar para vocês. É uma documentação muito completa, na qual podemos e devemos sempre nos basear para seguir os nossos projetos e criação de imagens.
+
+https://docs.docker.com/engine/reference/builder/
+
+Nós temos todas as principais instruções para a criação de uma imagem. Ele mostra os comandos e as principais instruções. Ele tem o FROM, que usamos agora há pouco; ele mostra como todas as sintaxes funcionam, como escapar caracteres.
+
+Temos o ADD, o COPY. Nós ainda não vimos algumas, mas veremos, por exemplo, o ENV, o EXPOSE. Já vimos o FROM. Com o LABEL podemos etiquetar e colocar algumas labels na nossa imagem; podemos definir algumas questões de volume, que ainda não sabemos o que é; o WORKDIR, que já vimos.
+
+Ele tem diversos exemplos que podemos ver como funcionam dentro da documentação e aplicar aos nossos projetos. Então vou deixar também o link da documentação nas atividades para vocês conseguirem ver como é que funciona.
+
+Mas ainda teremos outros exemplos de criação de imagens. Esse é só o primeiro para entendermos realmente como vai funcionar.
+
+Voltando para o terminal, ele está terminando de extrair nesse momento as últimas camadas dos downloads que ele fez da imagem do Node. Então vamos ver qual vai ser o resultado final.
+
+Ele está agora na etapa de WORKDIR, depois copiando os arquivos, executando o npm install. E por fim, no ENTRYPOINT ele definiu o npm start. Agora vou limpar o nosso terminal e vou fazer docker images. Olha o que temos agora.
+
+Temos “danielartine/app-node” na versão 1.0 e temos o ID dessa imagem. E se agora eu simplesmente fizer um docker run nessa imagem “danielartine/app-node” e fizer um mapeamento?
+
+Lembra que nós definimos a nossa aplicação dentro do container, mas ela é isolada? Então como eu posso agora saber em qual porta essa aplicação está rodando dentro do meu container?
+
+A princípio nós precisaríamos ser um pouco malandros. Se olharmos dentro do nosso “index.js”, veríamos que ela está sendo executada na porta 3000. Tem um breve problema que precisaremos resolver. Mas vamos colocar isso no terminal.
+
+Na nossa máquina nós vamos querer na porta 8080 de novo, mas nós queremos que a porta 8080 reflita na porta 3000, que é onde vimos que nossa aplicação vai ficar em execução dentro do nosso container: 
+
+```
+docker run -d –p 8080:3000 danielartine/app-node
+```
+
+Vou colocar também um -d para ficar em modo detached. E faltou especificar a versão, que é a 1.0, então docker run -d -p 8080:3000 danielartine/app-node:1.0.
+
+Na verdade ele deu um problema porque a porta 8080 já está em uso por causa dos nossos exemplos anteriores. Obviamente não podemos usar a mesma porta, então vou mudar para 8081.
+
+```
+docker run -d –p 8081:3000 danielartine/app-node
+```
+
+E agora se viermos no nosso navegador e tentarmos acessar o “http://localhost:8081”, está tudo funcionando, conseguimos acessar a nossa aplicação agora de maneira conteinerizada.
+
+Então nós criamos nossa própria imagem e executamos um container a partir dela. Isso é muito legal.
+
+Mas ainda tem algumas questões que precisamos resolver. Nós deixamos em aberto aquela questão de como saber em qual porta nossa aplicação estava em execução, como sabemos como expor ou não expor.
+
+Tem algumas questões que precisamos deixar menos obscuras para o nosso Dockerfile, para que consigamos deixar tudo muito mais fácil de ser entendido.
+
+Nós criamos nossa primeira imagem, mas precisamos entender mais alguns detalhes acerca da criação de imagens.
+
+#### projeto exemplo
+app-exemplo-node.zip
