@@ -62,6 +62,36 @@ Table of contents
   - [Criando a primeira imagem](#criando-a-primeira-imagem)
     - [docker build](#docker-build)
       - [projeto exemplo](#projeto-exemplo)
+    - [Incrementando a imagem](#incrementando-a-imagem)
+      - [parando todos os containers de uma vez (docker stop $(docker container ls -q))](#parando-todos-os-containers-de-uma-vez-docker-stop-docker-container-ls--q)
+      - [EXPOSE](#expose)
+      - [leitura dinamica da porta no node](#leitura-dinamica-da-porta-no-node)
+      - [ARG](#arg)
+      - [ENV](#env)
+    - [subindo a imagem para o Docker Hub](#subindo-a-imagem-para-o-docker-hub)
+      - [Login no docker Hub no command line](#login-no-docker-hub-no-command-line)
+      - [docker push](#docker-push)
+        - [access denied no docker push](#access-denied-no-docker-push)
+      - [docker tag](#docker-tag)
+    - [o que aprendemos?](#o-que-aprendemos-2)
+    - [O problema de persistir dados](#o-problema-de-persistir-dados)
+      - [comandos do docker ate agora](#comandos-do-docker-ate-agora)
+      - [tamanho do container (docker ps -s)](#tamanho-do-container-docker-ps--s)
+    - [Utilizando bind mounts](#utilizando-bind-mounts)
+    - [flag -v](#flag--v)
+      - [flag --mount](#flag---mount)
+      - [o que acontece se passarmos um diretorio que nao existe?](#o-que-acontece-se-passarmos-um-diretorio-que-nao-existe)
+    - [Utilizando Volumes](#utilizando-volumes)
+      - [docker volume](#docker-volume)
+      - [docker volume ls](#docker-volume-ls)
+      - [docker volume create](#docker-volume-create)
+      - [docker run com volume](#docker-run-com-volume)
+      - [local onde o docker armazena os volumes no linux](#local-onde-o-docker-armazena-os-volumes-no-linux)
+      - [docker volume commands](#docker-volume-commands)
+      - [criar um volume com a flag --mount](#criar-um-volume-com-a-flag---mount)
+    - [utilizando tmpfs (somente linux)](#utilizando-tmpfs-somente-linux)
+      - [flag --tmpfs](#flag---tmpfs)
+      - [flag --mount com tmpfs](#flag---mount-com-tmpfs)
   
 
 ## Conhecendo o problema
@@ -1086,3 +1116,817 @@ Nós criamos nossa primeira imagem, mas precisamos entender mais alguns detalhes
 
 #### projeto exemplo
 app-exemplo-node.zip
+
+### Incrementando a imagem
+Agora vamos voltar ao nosso projeto e entender algumas questões que ficaram pendentes e que poderíamos aperfeiçoar na criação do nosso Dockerfile, até mesmo em relação ao projeto.
+
+Primeiro vamos voltar ao nosso terminal e antes de mais nada, vamos entender um comando novo, que na verdade nem é tão novo, é a junção de dois comandos que já conhecemos. Vamos fazer docker ps e olhar que eu estou com vários containers em execução.
+
+#### parando todos os containers de uma vez (docker stop $(docker container ls -q))
+
+Se eu quiser parar todos de uma vez, como eu faço? Eu posso colocar o comando docker stop, e eu posso simplesmente falar que eu quero parar todos os meus containers passando os IDs deles. Para fazer isso basta eu executar junto o comando docker container ls.
+
+Só que não tão rápido assim. Eu preciso falar que eu quero executar o comando docker container ls e usá-lo como entrada para o meu stop. Para isso eu uso docker stop $(docker container ls).
+
+E no fim das contas também eu preciso falar que eu quero pegar só o ID, então eu coloco a flag –q, de quiet. Assim ele pega só o ID, docker stop $(docker container ls -q).
+
+```
+docker stop $(docker container ls -q)
+```
+
+Vou dar um “Enter”. Ele vai ter aqueles 10 segundos para parar os containers de maneira segura, por assim dizer. E ele vai parar todos os containers a partir desse momento.
+
+Mas enquanto ele vai parando, o que podemos observar no nosso “Dockerfile”? Nós construímos a nossa imagem, e no momento em que executamos, o que acontece?
+
+```
+FROM node:14
+WORKDIR /app-node
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Vamos mais uma vez no terminal fazer um docker run -p 8080:3000 -d danielartine/app-node:1.0. Ele rodou. E agora vamos dar um docker ps mais uma vez.
+
+```
+docker run -p 8080:3000 -d danielartine/app-node:1.0
+```
+
+Repara que ele está mostrando para nós o mapeamento de portas que estamos fazendo graças à flag -p. Mas e se eu executar esse mesmo container sem fazer o -p e colocar só o -d? Vamos ver o que vai acontecer. Vamos dar um docker ps de novo.
+
+Repare que ele não está exibindo nada na coluna de portas. E sabemos que a nossa aplicação roda na porta 3000.
+
+Então como é que poderíamos documentar isso para que outras pessoas que fossem utilizar o nosso container posteriormente, baseado na nossa imagem, soubessem que a aplicação está exposta na porta 3000?
+
+#### EXPOSE
+
+Existe na verdade uma maneira que podemos fazer essa documentação para que fique explícito em qual porta a aplicação está sendo executada. Basta colocarmos a instrução EXPOSE.
+
+```
+FROM node:14
+WORKDIR /app-node
+EXPOSE 3000
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+No nosso caso, colocamos EXPOSE 3000. Nesse momento estamos falando que a nossa aplicação estará exposta na porta 3000. 
+
+Isso não é obrigatório, até porque já fizemos anteriormente e funcionou esse mapeamento.
+
+Mas agora vamos fazer o seguinte teste: vou salvar o arquivo e gerar uma nova imagem com o comando docker build –t danielartine/app-node:1.1 .. Coloquei a versão 1.1 e o ponto no final, que é o nosso diretório atual.
+
+```
+docker build –t danielartine/app-node:1.1 .
+```
+
+Ele está fazendo todo o processo de build. E no momento em que eu executar agora mais uma vez o container sem fazer nenhum tipo de definição de porta, vamos ver o que vai acontecer. 
+
+Se eu der um docker ps, repare que ele fala que a porta 3000 está exposta.
+
+Então qualquer pessoa que olhar agora vai saber que a porta 3000 tem alguma aplicação dentro daquele container executando na porta 3000 do container. 
+
+Então não precisamos adivinhar, e fica muito mais fácil de fazer um possível mapeamento de portas a partir daí.
+
+Mas mais uma vez, vamos aperfeiçoar ainda mais a nossa imagem. 
+
+Vamos entender o que está acontecendo.
+
+Nós deixamos exposta a porta 3000. 
+
+Mas o que poderíamos fazer se a nossa aplicação estivesse em um cenário diferente?
+
+Porque vimos que no “index.js” estamos definindo que a porta 3000 é efetivamente a porta da nossa aplicação.
+
+E se quiséssemos fazer isso no momento da criação da nossa imagem, de maneira mais parametrizada, através de uma variável de ambiente?
+
+#### leitura dinamica da porta no node
+Nós podemos simplesmente usar só uma sintaxe muito específica do Node, que seria colocar um process.env.PORT. 
+
+```
+process.env.PORT
+```
+
+PORT é o nome da variável que estamos definindo. 
+
+Com isso basicamente estamos atribuindo que queremos ler uma variável de ambiente chamada PORT.
+
+A partir desse momento podemos definir na nossa imagem o seguinte: nós vamos querer agora receber esse parâmetro definido na nossa imagem.
+
+#### ARG
+Então nós podemos simplesmente definir que nós vamos ter um argumento, que será usado para definir essa variável de ambiente dentro do nosso container posteriormente, e que será a porta que queremos utilizar. 
+
+Para isso podemos fazer, por exemplo, ARG PORT=6000.
+
+```
+FROM node:14
+WORKDIR /app-node
+ARG PORT=6000
+EXPOSE 3000
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+E depois vamos colocar o EXPOSE com essa porta. 
+
+E como eu pego o valor desse argumento, dessa variável que estamos utilizando dentro da criação da nossa imagem? 
+
+É só colocar EXPOSE $PORT.
+
+```
+FROM node:14
+WORKDIR /app-node
+ARG PORT=6000
+EXPOSE $PORT
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Mas tem um pequeno detalhe: 
+```diff
+- esse ARG só funciona em tempo de criação, de build da nossa imagem.
+```
+
+E se eu quiser passar isso efetivamente para dentro do meu container que será gerado? 
+
+Ou seja, se eu quero que em algum momento essa variável possa ser lida dentro do meu container, eu preciso explicitar também um outro tipo de variável de ambiente para dentro do container, que é uma ENV.
+
+#### ENV
+```diff
++ O ARG só é usado em tempo de build da imagem, e o ENV será usado dentro do container posteriormente. 
+```
+
+Então podemos colocar também ENV PORT=$PORT.
+
+```
+FROM node:14
+WORKDIR /app-node
+ARG PORT=6000
+ENV PORT=$PORT
+EXPOSE $PORT
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Essa variável ambiente PORT que nós estamos definindo para dentro do container terá um valor previamente definido por essa variável $PORT.
+
+Nós podemos até ser um pouco mais semânticos e trocar para ARG PORT_BUILD=6000 e ENV PORT=$PORT_BUILD, e também EXPOSE $PORT_BUILD.
+
+```
+FROM node:14
+WORKDIR /app-node
+ARG PORT_BUILD=6000
+ENV PORT=$PORT_BUID
+EXPOSE $PORT_BUILD
+COPY . .
+RUN npm install
+ENTRYPOINT npm start
+```
+
+Agora vamos buildar essa imagem mais uma vez, agora na versão 1.2: 
+
+docker build –t danielartine/app-node:1.2 .
+
+Ele vai buildar todo o nosso processo. 
+
+E agora eu vou fazer o docker run da nossa versão 1.2 sem definir nenhuma porta para ver se vai acontecer o que nós esperamos. 
+
+E depois fazer um docker ps. 
+
+Ele está mostrando a porta 6000.
+
+E agora nós já sabemos, olhando para nosso docker ps, que a porta que precisamos fazer algum mapeamento caso queiramos acessar esse container é a porta 6000.
+
+Então vamos fazer novamente nosso docker run -p da porta 9090 da nossa máquina, na porta 6000 do nosso container e em modo detached: 
+
+docker run –p 9090:6000 –d danielartine/app-node:1.2
+
+Vamos executar isso e voltar para nosso navegador, acessando o “localhost:9090”. Conseguimos acessar nossa aplicação mesmo assim.
+
+Nós conseguimos definir variáveis de ambiente para dentro do nosso container. 
+
+Ou seja, conseguimos fazer a leitura dessas variáveis e colocá-las dentro do container.
+
+Temos também as variáveis que são explícitas, específicas para a parte de construção da nossa imagem, que é o caso do ARG. 
+
+O ARG é usado para construção da imagem e o ENV é usado posteriormente dentro do container.
+
+E conseguimos também utilizar a instrução de EXPOSE, para ser mais semântico e deixar claro para as pessoas que vão utilizar nosso container posteriormente que a aplicação que estará ali dentro está exposta em determinada porta.
+
+Então conseguimos deixar a nossa imagem ainda mais fácil de ser manuseada posteriormente, além de tornar mais parametrizável através das variáveis de ambiente.
+
+Deixamos nossa imagem agora um pouco mais robusta. 
+
+E vamos entender a partir de agora como fazer o deploy dessa imagem, como colocá-la no Docker Hub.
+
+### subindo a imagem para o Docker Hub
+Agora vamos fazer o push da nossa imagem para o Docker Hub. 
+
+O primeiro passo é que você crie sua conta na parte direita da própria home do Docker Hub. 
+
+Você define seu username, seu e-mail e sua senha, aceita os termos e marca o recaptcha. 
+
+Depois é só clicar em “Sign Up” e confirmar sua conta por e-mail.
+
+Depois que você dizer isso, no canto superior direito tem a parte de “Sign In”. 
+
+Você vai colocar o seu usuário, que no meu caso é “aluradocker”, mas você terá o seu. E também a senha que você usou no momento do cadastro.
+
+Quando você fizer o login ele vai carregar e na parte superior, na barra de navegação, tem a parte de repositórios. 
+
+Se clicarmos, veremos que nós ainda não temos nada, porque nós simplesmente já criamos nossa imagem, mas ainda não a subimos para o Docker Hub.
+
+E como vamos fazer isso? 
+
+Vamos voltar ao nosso terminal, e o primeiro passo que precisamos fazer é autenticar a nossa conta também no Command Line Interface do Docker, para que ele saiba que somos realmente quem nós somos.
+
+#### Login no docker Hub no command line
+Então faço o comando docker login -u aluradocker. 
+
+```
+docker login -u aluradocker
+```
+
+O aluradocker é o meu nome de usuário. 
+
+Quando você der um “Enter” ele vai pedir a senha que você usou no momento do seu cadastro no Docker Hub. 
+
+Ele não vai mostrar o número de caracteres por questão de segurança, mas ele vai digitar.
+
+```diff
++ Você vai dar um “Enter” e ele vai dar um warning de que sua senha foi armazenada de maneira não criptografada nesse caminho.
+```
+
+Agora vou dar um “Ctrl + L” e um docker images. 
+
+Agora nós queremos simplesmente colocar a imagem “danielartine/app-node” na versão 1.0 no Docker Hub.
+
+Nós precisamos usar um comando específico para isso. 
+
+#### docker push
+Ao invés de ser o docker pull, vai ser o docker push, seguido do nome da imagem e sua versão. 
+
+```
+docker push danielartine/app-node:1.0
+```
+
+Com isso ele vai saber que ele deve fazer esse push automaticamente para o Docker Hub.
+
+No momento em que dermos o “Enter”, ele vai preparar todas as camadas, mas repare que ele deu um acesso negado. 
+
+##### access denied no docker push
+Isso quer dizer que nós não temos permissão para colocar essa imagem “danielartine/app-node” na versão 1.0. 
+
+Mas por quê?
+
+Vamos lembrar daquela questão, por exemplo, do “dockersamples/static-site”. 
+
+Nós temos o nome do usuário ou da organização, barra e o nome da imagem.
+
+E qual é o meu nome de usuário efetivamente nessa conta? 
+
+É “aluradocker”. 
+
+Então não faz sentido eu ter permissão de fazer um push em nome de “danielartine/app-node”. 
+
+Assim como não teria se eu tivesse uma imagem “dockersamples/alguma coisa”.
+
+Então eu vou voltar ao meu terminal e fazer docker images mais uma vez só para visualizar. 
+
+Eu quero gerar uma cópia dessa imagem, mas com uma nova tag, um novo repositório na coluna que queremos gerar.
+
+#### docker tag
+Para fazer isso basta executarmos o comando docker tag. 
+
+Então docker tag danielartine/app-node:1.0. E em seguida eu coloco a imagem que eu quero gerar, então fica: 
+
+```
+docker tag danielartine/app-node:1.0 aluradocker/app-node:1.0
+```
+
+No momento em que eu apertar o “Enter”, ele vai fazer sem nenhum output. 
+
+E se eu der um docker images de novo, agora temos o “aluradocker/app-node” na versão 1.0. 
+
+Inclusive com o mesmo ID, mas agora com um repositório diferente.
+
+Agora eu vou tentar efetuar mais uma vez o meu push, mas agora com a versão correta, que é o repositório de aluradocker: 
+
+```
+docker push aluradocker/app-node:1.0
+```
+
+Ele vai começar a fazer o push, só que agora efetivamente, sem dar nenhum problema de acesso, porque ele consegue, a partir desse momento, fazer o meu push de maneira bem mais segura, porque ele sabe que eu sou realmente a pessoa que deveria ter essa permissão, baseado no nome de repositório que definimos para a nossa imagem.
+
+Repara que agora o push terminou. 
+
+Isso quer dizer que se agora formos ao Docker Hub na nossa parte de repositórios, vai aparecer a nossa imagem que acabamos de subir. 
+
+Se clicarmos sobre nossa imagem, vemos a versão 1.0.
+
+Só que agora veremos uma coisa mais legal ainda. 
+
+No terminal vamos dar um “Ctrl + L” e fazer o docker images mais uma vez. 
+
+Nós temos a “danielartines/app-node” também na versão 1.2.
+
+Então se eu fizer um docker tag dessa imagem na versão 1.2 para “aluradocker/app-node”, também na versão 1.2, eu vou fazer um push dessa nova versão.
+
+```
+docker tag danielartine/app-node:1.2 aluradocker/app-node:1.2
+docker push aluradocker/app-node:1.2
+```
+
+Só que qual vai ser a grande sacada? 
+
+Ele vai fazer o processo de novo, só que agora ele sabe que diversas dessas camadas já existem no Docker Hub, e ele só faz o push das camadas necessárias.
+
+Então até o Docker Hub também consegue ser inteligente nessa parte. 
+
+Ela já sabe que uma camada já está lá e ele consegue aproveitar para gerar uma imagem nova com as camadas já existentes. 
+
+E isso é muito legal.
+
+Se voltarmos ao Docker Hub e atualizarmos a página da nossa imagem, além da nossa tag 1.0, nós também teremos a nossa 1.2, ambas com OS do Linux, e mostrando que o pull de uma foi feito há um minuto e ou outro há poucos segundos.
+
+Agora nós aprendemos a fazer o push das nossas imagens, gerando tags novas também localmente. E vimos que o Docker Hub é capaz de reutilizar as camadas já existentes também no nosso repositório remoto. E isso é muito legal.
+
+### o que aprendemos?
+* imagens sao imutaveis, ou seja, depois de baixadas, multiplos containers conseguirao reutilizar a mesma imagem
+* imagens sao compostas por uma ou mais camadas. dessa forma, diferentes imagens sao capazes de reutilizar uma ou mais camadas em comum entre si
+* podemos criar nossas imagens atraves do Dockerfiles e do comando docker build
+* para subir uma imagem no Docker Hub, utilizamos o comando docker push
+
+### O problema de persistir dados
+Antes de seguirmos no nosso fluxo original, vamos revisar os comandos importantes que já vimos.
+
+#### comandos do docker ate agora
+docker ps -> lista os containers ativos
+docker ps -a -> lista os containers instaladas
+docker container rm $(docker container ls -aq) -> remove os containers (todos)
+docker images -> lista as imagens
+docker rmi $(docker image ls -aq) -> remove as imagens (todas)
+docker rmi $(docker image ls -aq) --force -> força a remoçao da imagem (todas)
+
+
+Vamos dar um docker ps. 
+Não temos nenhum container em execução. Se fizermos um docker ps –a, temos vários containers parados.
+
+Vamos dar aquela revisada e remover todos os containers. Então vou fazer docker container rm. E vou usar como entrada a saída do meu comando docker container rm $(docker container ls –aq).
+
+Na flag -aq, o q é para pegarmos somente os IDs e o -a é porque eu quero pegar todos os meus containers, inclusive os que estão parados. Se eu der um “Enter”, ele vai remover. Vamos fazer um docker images. Nós temos algumas imagens.
+
+Agora o que vamos fazer é um docker rmi $(docker image ls –aq). Com isso ele está removendo todas as imagens. Repara que ele deu um conflito.
+
+Ele está falando que algumas imagens estão sendo referenciadas por múltiplos repositórios, então precisamos forçar essa remoção. Vamos fazer o mesmo comando, mas passando o docker rmi $(docker image ls –aq) --force no final. Assim ele consegue agora remover essas imagens também.
+
+Então caso você não consiga, a flag --force vai dar essa força para nós. Agora se nós fizermos um docker images, não temos mais nada, foi tudo removido.
+
+Qual é a grande mágica que veremos durante essa etapa do curso? 
+
+Vamos voltar às origens e dar um docker run –it ubuntu, porque eu quero iniciar um container do Ubuntu em modo interativo. 
+
+Nós vamos entender o porquê.
+
+Vou dar um “Enter” para ele baixar a imagem rapidamente. 
+
+Nesse caso, como a imagem é bem curta, vai ser rápido, não precisamos fazer nenhum corte nesse caso.
+
+Estou com meu container já praticamente em execução, ele está terminando de extrair. 
+
+E eu vou abrir já outro terminal e fazer docker ps. 
+
+E com isso ele mostra as informações desse container.
+
+Até então nada de novo. 
+
+#### tamanho do container (docker ps -s)
+Mas existe uma flag bem interessante de vermos, que é a -s. 
+
+```
+docker ps –s
+docker container ls –s
+```
+
+Então se fizermos docker ps –s ou docker container ls –s, repara que surgiu uma coluna extra. 
+
+Nessa coluna ele fala que o tamanho desse container é 0B, mas o tamanho virtual dele é 72.8 MB. 
+
+O que isso quer dizer?
+
+Vamos voltar à nossa apresentação original falando sobre imagens, como elas funcionam e afins. 
+
+Lembra que uma imagem, no fim das contas, é um conjunto de camadas que estão empilhadas uma em cima da outra? 
+
+Nós conseguimos, aliás, ver essa informação com docker history.
+
+Se eu fizer um docker history na imagem do Ubuntu, por exemplo, vejo que ela é composta por duas camadas, uma de 0B e outra de 72.8MB.
+
+Então repara que o tamanho virtual do meu container é meio que o tamanho total da minha imagem. 
+
+Isso faz total sentido, porque no fim das contas o container nada mais é do que a imagem com uma camada extra de read-write.
+
+No momento em que criamos esse container, até então não tem nenhum dado dentro dele além das informações originais da imagem, então o tamanho dele vai ser igual ao tamanho da imagem.
+
+Mas o tamanho mesmo dele efetivamente será 0B. 
+
+O tamanho virtual dele vai ser só o tamanho da imagem no fim das contas.
+
+Vamos voltar ao nosso outro terminal e fazer algumas outras operações. 
+
+Por exemplo, vamos fazer apt-get update. 
+
+Vamos fazer algumas operações dentro do nosso container para ver o que vai começar a acontecer com aquele tamanho que estamos vendo.
+
+Ele vai atualizar o repositório, nós podemos criar alguns arquivos. 
+
+Você também pode fazer os experimentos que você quiser. 
+
+Eu só estou dando uma atualização no repositório.
+
+Se eu fizer agora docker ps –s, repara que o size dele já está em 16.2MB. 
+
+Agora o tamanho virtual do meu container é o tamanho que era original da imagem que tínhamos com o docker history mais o tamanho das informações de dados que eu tenho dentro do meu container.
+
+Então essa informação na coluna de size nada mais é do que as informações que estão agora na nossa camada de read-write. 
+
+São informações a princípio temporárias, porque lembra que essa camada é fina e temporária, só para informações que serão escritas dentro daquele container.
+
+E é por isso que se criarmos outros containers a partir da imagem do Ubuntu, teremos cada um com uma camada de read-write diferente e os containers terão o mesmo tamanho base no fim das contas, para que consigamos fazer essas operações. 
+
+Mas cada um terá a sua camada de escrita separada.
+
+Então repara que se dermos um docker ps –s mais uma vez, o tamanho já vai estar praticamente o dobro, porque o apt-get update já foi executado provavelmente.
+
+Mas é aquela velha história: se eu voltar no meu container, sair dele e der um docker ps, ele já não está mais em execução. 
+
+Mas agora eu vou criar um novo container com docker run –it ubuntu bash.
+
+Se eu voltar no meu outro terminal e fizer docker ps –s, teremos um novo, que é a mesma história: repara que o tamanho dele zerou, porque as camadas de read-write são isoladas umas das outras, cada container terá a sua.
+
+Se fizermos docker ps –sa, nós temos agora o antigo, que não está mais em execução, e o outro que ainda está em execução.
+
+Então agora precisamos entender como podemos persistir essas informações de alguma maneira para que containers que já foram removidos e talvez subam de novo com alguma informação mantenham esses dados.
+
+Porque vimos que essa camada não é persistente entre containers, ela também não é persistente caso eu remova esse container e suba um novo, eu não vou ter essa informação mais. 
+
+Então como podemos persistir essas informações?
+
+A primeira informação que podemos seguir de uma maneira, além da documentação, é utilizar os volumes. 
+
+Existem três tipos principais.
+
+Um deles é a parte do bind mount, que é uma maneira com que podemos fazer um bind entre o file system do nosso sistema operacional e o sistema de arquivos do nosso container. 
+
+Então teremos uma ponte entre essas duas partes, que vai persistir essa informação no nosso host.
+
+Temos o volume efetivamente, que será gerenciado pelo Docker. 
+
+Mas vamos entender tudo isso em mais detalhes. 
+
+E tem o tmpfs, que é temporário. 
+
+Mas vamos entender a utilidade dele também.
+
+Agora que já entendemos o problema que precisamos enfrentar e como resolver ele, com essas três possíveis soluções.
+
+### Utilizando bind mounts
+Agora nós vamos entender como utilizar a primeira solução que o Docker disponibiliza para persistência de dados, que se dermos uma olhada na documentação, são os bind mounts.
+
+Ele vai fazer basicamente o bind, uma ligação entre um ponto de montagem do nosso sistema operacional e algum diretório dentro do container. 
+
+Vamos entender agora como isso vai funcionar.
+
+Eu vou parar mais uma vez os containers com o comando de docker rm $(docker container os -aq) --force. 
+
+E agora vamos executar mais uma vez aquele docker run –it ubuntu. 
+
+E a questão agora é a seguinte: o que podemos definir no momento em que vamos executar um container?
+
+```diff
++ Eu posso informar que quando esse container for criado e executado eu quero que as informações persistidas em determinado diretório dentro dele sejam persistidas em algum diretório na minha máquina local mesmo, no meu host.
+```
+
+### flag -v
+Então além de definir os comandos básicos que já definimos e a flag de -it também, eu posso colocar uma flag de -v.
+
+Vamos ver o que essa flag faz. 
+
+Eu vou criar uma nova pasta para esse caso específico. 
+
+Já estou na minha home, vou criar um pasta com o comando mkdir, chamada volume-docker. 
+
+Pode ser o nome que você quiser criar para essa pasta.
+
+E agora, voltando à nossa execução, eu quero que esse diretório que esteja na minha pasta “/home/daniel/volume-docker” corresponda a um determinado caminho dentro do meu container.
+
+Então eu coloco dois pontos e informo que, por exemplo, dentro do container eu terei um diretório chamado “/app”, e tudo que for gravado dentro desse diretório será persistido nesse diretório no meu host, docker run –it –v /home/daniel/volume-docker:/app Ubuntu bash.
+
+Vamos ver como isso vai funcionar. Eu vou colocar ainda um bash no final e dar um “Enter”.  
+
+Se eu der um ls agora, repara que ele tem esse diretório “/app”. 
+
+Agora vou acessar com cd app/. 
+
+E vou criar um arquivo com touch arquivo-qualquer.txt. 
+
+Vamos ver o que vai acontecer.
+
+Se eu simplesmente abrir o gerenciador de arquivos e entrar na pasta “volume-docker”, está ali o meu “arquivo-qualquer.txt”.
+
+Então eu consegui fazer essa definição de colocar um caminho dentro do meu diretório da minha máquina local para um diretório dentro do container e salvar esse arquivo.
+
+Mas como isso vai funcionar agora? 
+
+Eu quero parar esse container. 
+
+Vou dar um “Ctrl + D” e vou criar um novo container, definindo o mesmo bind mount, o mesmo caminho na minha máquina para esse diretório “/app”.
+
+E vai ser um novo container, porque estamos dando um novo run, então sabemos que será uma nova camada de read-write para esse container: docker run –it –v /home/daniel/volume-docker:/app ubuntu bash. 
+
+E vou dar um “Enter”.
+
+Se agora eu der um ls, repare que eu vou continuar tendo minha pasta “/app”. 
+
+E se eu der um cd app e um ls em seguida, o meu “arquivo-qualquer.txt” ainda aparece.
+
+Então conseguimos agora persistir informações entre containers. 
+
+Caso um container pare de funcionar de alguma maneira e queiramos persistir os dados que estejam lá, já conseguimos fazer isso agora, e de maneira a princípio prática.
+
+Nós só definimos um diretório dentro do nosso host para um diretório do nosso container e está tudo feito, 100% funcionando. 
+
+É muito fácil e prático nesse sentido.
+
+Mas qual é a outra maneira que podemos fazer e que inclusive vem sendo mais recomendada pelo Docker para criação de volume?
+
+Mais uma vez, em conjunto com a documentação, repara que a maneira que estamos utilizando é com a flag -v.
+
+#### flag --mount
+Mas vem sendo recomendado, por ser mais semântico, a utilização além da flag –v, a flag --mount. 
+
+Vamos pegar um exemplo para ver o que ela faz.
+
+No terminal vou dar um “Ctrl + D” de novo e vou criar um terceiro container agora, só para vocês verem que eu não estou roubando, não estou com nenhum container execução.
+
+Vamos criar o terceiro container agora utilizando essa flag --mount. 
+
+Como é que ela funciona? 
+
+```
+docker run -it --mount type=bind,source=/home/daniel/volume-docker,target=/app ubuntu bash
+```
+
+No nosso caso vamos fazer um mount do tipo bind, porque é um bind mount. 
+
+E a nossa source, o diretório da nossa máquina, vai ser mais uma vez, no meu caso, docker run –it --mount type=bind,source=/home/daniel/volume-docker,target=/app ubuntu bash. 
+
+E o meu target será um “/app” também dentro desse container.
+
+Vou dar um “Enter”. 
+
+#### o que acontece se passarmos um diretorio que nao existe?
+Isso é até uma coisa interessante: se o diretório que você estiver tentando utilizar não existir no seu host, a flag --mount vai falar que esse caminho não existe. 
+
+Se eu der um ls tenho o meu app. 
+
+E seu eu der cd app/ e em seguida um ls, aparece o meu arquivo.
+
+Então tudo continua funcionando, utilizando tanto da maneira com a flag --mount quanto com a flag –v. 
+
+Conseguimos agora persistir os dados entre os containers e também entre os próprios containers nas execuções seguintes para que os dados sejam persistidos caso seja necessário.
+
+Se tiver algum arquivo de configuração, que a sua aplicação precisa executar e coisas afins, nós conseguimos ter isso agora.
+
+Nós veremos alguns exemplos mais robustos posteriormente, mas até então vamos entender os conceitos primordiais que baseiam toda a utilização de volumes, bind mount e tmpfs.
+
+Mas vamos ficar com a pulga atrás da orelha no final dessa aula com o seguinte questionamento: será que é interessante o nosso container depender de um caminho dentro do nosso host?
+
+Pode ser que nós escrevamos como aconteceu agora, de um caminho não existir e dê algum problema; ou não tenhamos permissão para acessar; ou alguém simplesmente delete esse caminho localmente, porque ele estará no host.
+
+Então são N cenários que podem acontecer e que devemos nos preocupar. 
+
+E para isso vamos conseguir utilizar uma solução ainda mais robusta e que é mais recomendada pelo Docker, que são os volumes em si, que serão gerenciados pelo próprio Daemon do Docker. 
+
+### Utilizando Volumes
+A segunda solução, que inclusive é a mais recomendada para se usar em ambientes produtivos e afins pelo Docker, é a utilização de volumes.
+
+Se olharmos a imagem que está presente na documentação, ele mostra que a utilização de volumes é uma área gerenciada pelo Docker dentro do seu file system.
+
+Então por mais que no fim das contas as nossas informações continuem dentro do nosso host original para ser persistidas, nós teremos uma área que o Docker vai gerenciar e é muito mais segura a nível de alguém mexer e fazer alguma loucura ali dentro, porque será gerenciada pelo próprio Docker.
+
+E como criamos um volume inicialmente? Vamos voltar no nosso terminal. Não estou com nenhum container em execução.
+
+#### docker volume
+Existe, dentre os diversos comandos que temos no Docker, um comando chamado docker volume. 
+
+```
+docker volume
+```
+
+#### docker volume ls
+Podemos até dar um docker volume ls, para vermos que não temos nenhum criado. 
+
+```
+docker volume ls
+```
+
+#### docker volume create
+Nós podemos simplesmente criar. 
+
+Eu posso dar um docker volume create e colocar em seguida nosso meu-volume.
+
+```
+docker volume create meu-volume
+```
+
+Quando eu der esse comando, ele vai criar, e se dermos um docker volume ls, ele mostra nosso volume, usando nosso driver local do nosso host, com o nome que demos.
+
+Mas onde é que ele está na nossa máquina? Como é que eu sei que ele vai gravar essas informações? Nós vamos chegar lá.
+
+Mas antes vamos fazer o mesmo experimento que fizemos anteriormente. 
+
+Eu vou executar o docker run com a flag -v, como fizemos da maneira original. 
+
+Só que ao invés de colocarmos o mesmo caminho de antes, eu não quero mais definir nenhum diretório dentro da minha máquina manualmente.
+
+#### docker run com volume
+Então eu vou simplesmente explicitar que eu quero utilizar o “meu-volume”, que é o nome do meu volume, e ele será mapeado nesse meu diretório “/app” dentro do meu container, docker run –it –v meu-volume:/app ubuntu bash. 
+
+```
+docker run -it -v meu-volume:/app ubuntu bash
+```
+
+Vou dar um “Enter” e um ls. 
+
+Vou entrar no meu /app mais uma vez.
+
+Ele está vazio, porque repara que por mais que o /app seja igual, agora nós estamos utilizando um ponto dentro do nosso host diferente. 
+
+Antes estávamos utilizando o diretório na nossa home, mas agora estamos usando um novo volume, que é esse “meu-volume” gerenciado pelo Docker.
+
+Mas se seguirmos a mesma receita, vamos criar um arquivo qualquer com touch arquivo-qualquer.txt. 
+
+Vamos criar um novo container, seguindo o mesmo comando: docker run –it –v meu-volume:/app ubuntu bash. 
+
+Se eu fizer agora um cd app/ e um ls, temos agora o nosso arquivo qualquer.
+
+Então tudo continua funcionando. 
+
+Mas a pergunta que precisamos responder agora é: onde está esse arquivo? 
+
+Porque antes nós sabíamos que se viéssemos na nossa home e acessássemos a pasta “volume-docker” ele estaria dentro dela.
+
+Mas esse meu volume está aonde? 
+
+Eu vou entrar com o super usuário, fazendo _sudo su_ e colocar minha senha. 
+
+Agora existe um diretório onde o Docker está realmente na nossa máquina. 
+
+Não o Docker em si, mas diversas informações que ele armazena na nossa máquina. 
+
+#### local onde o docker armazena os volumes no linux
+Ele grava em “/var/lib/docker/”.
+
+Se dermos um ls, nós temos diversas informações, como plug-ins, buildkit, imagens, overlay, e inclusive volumes. Se fizermos cd volumes/, nós encontramos o “meu-volume”.
+
+Então se eu fizer um cd meu-volume/, ele vai ter um hash doido, dentro dessa pasta de data, e dentro dele estará o nosso arquivo qualquer.
+
+Então nós sabemos agora onde os nossos arquivos estão, porque agora por mais que eles estejam ainda dentro desse caminho, eles estão num lugar completamente gerenciado pelo Docker. Então conseguimos utilizar os comandos do Docker para gerenciar esse volume.
+
+#### docker volume commands
+
+```
+docker volume 
+```
+
+Se sairmos do modo de super usuário e fizermos docker volume simplesmente sem passar nada, ele vai mostrar que conseguimos criar volumes, inspecioná-los, listá-los, remover os que não estão sendo usados, remover independentemente se estiver sendo usado ou não.
+
+```
+docker volume create
+docker volume inspect
+docker volume ls
+docker volume prune
+docker volume rm
+```
+
+Então conseguimos gerenciar esses volumes agora através da interface do Docker. 
+
+Não ficamos 100% dependentes do nosso sistema de arquivos do nosso sistema operacional. 
+
+E sim o Docker vai gerenciar isso para nós agora.
+
+Isso é muito interessante, porque agora não dependemos diretamente de uma estrutura de pastas específicas do nosso sistema operacional. Ele estará sempre nesse diretório de volumes.
+
+#### criar um volume com a flag --mount
+E por fim, para finalizar essa parte da criação de volumes, mais uma vez vamos olhar na documentação. Também temos a possibilidade de criar um volume com a flag --mount.
+
+E é até mais fácil nesse caso, porque por padrão ele já assume que o tipo que vamos criar é um volume. Então não precisamos colocar o tipo, como fizemos com o bind.
+
+Então vamos voltar ao terminal e executar o comando de criação de um container. Vamos colocar o --mount, sem o type=bound, porque não é mais necessário. E a source será o meu-volume, e o target continua para “/app”, docker run -it --mount source=meu-volume, target=/app ubuntu bash. Se fizermos o ls dentro de /app, temos o nosso arquivo qualquer.
+
+```
+docker run -it --mount source=meu-volume,target=/app ubuntu bash
+```
+
+E ainda tem uma graça dos volumes também que é o seguinte: vamos criar mais um container, mas agora vou colocar, por exemplo um meu-novo-volume em source, que é um volume que eu não tenho criado até então. Ele vai fazer isso automaticamente para nós.
+
+Se eu der um ls app/ vai estar vazio, porque eu estou usando um volume novo. Mas se eu sair desse container agora e der um docker volume ls, vemos que ele criou já esse volume automaticamente.
+
+Então conseguimos ter esse controle também e o Docker vai nos ajudar nesse sentido. Então não precisamos se preocupar necessariamente em criar, porque como é gerenciado pelo Docker ele pode fazer isso por nós. E isso é muito interessante.
+
+Agora já vimos as duas principais formas de criar maneiras de persistir dados, tanto bind mount como com os volumes em si gerenciados pelo Docker. Mas ainda falta uma terceira forma, que são os tmpfs.
+
+### utilizando tmpfs (somente linux)
+Chegamos ao terceiro tipo que podemos utilizar de persistência com o Docker, nem tanto de dados, que são os tmpfs.
+
+Antes de seguirmos, algumas peculiaridades: 
+```diff
+- a primeira é que ele só vai funcionar no host Linux. 
+```
+
+Então por isso é importante estarmos utilizando o Linux, porque diversas funcionalidades, como essa, por exemplo, são feitas para rodar em ambiente Linux.
+
+Então essa é a importância de você estar seguindo provavelmente esse curso no Linux também, porque é uma questão que já está disponível dentro desse ambiente.
+
+Mas vamos ver como o tmpfs funciona e o que vai mudar. Nós já executamos containers diversas vezes. E agora qual será a diferença?
+
+Temos toda a nossa parte de definir como um container vai funcionar. Mas como é que fazemos para utilizar agora um tmpfs?
+
+#### flag --tmpfs
+No fim das contas, se fôssemos olhar na documentação, mas eu não vou dar spoiler para vocês, nós vamos defini-lo de maneira bem simples, porque não vamos utilizar o -v agora. 
+
+Ele possui uma flag própria já, que no caso é a --tmpfs.
+
+Se fizermos docker run –it --tmpfs=/app ubuntu bash e dermos um “Enter”, seguido de um ls, veremos que ele criou a pasta “app”.
+
+```
+docker run –it --tmpfs=/app ubuntu bash
+```
+
+Mas repara uma coisa muito importante: diferente das outras vezes que criamos essa pasta através de volumes, agora ela está com um fundo verde, assim como a pasta tmp. 
+
+O que será que isso quer dizer?
+
+```diff
++ Isso significa que essa pasta “/app” é temporária. 
+```
+Então ela está sendo escrita na memória do nosso host.
+
+Eu vou criar um arquivo dentro do meu diretório app, por exemplo: touch app/um-arquivo-qualquer. 
+
+Vou dar um ls app/, para ver meu arquivo. 
+
+Agora vou sair com exit e vou criar um novo. 
+
+E se eu der um ls app/ de novo, agora não tem nada dentro dele.
+
+Então qual é a utilidade prática desse tipo de armazenamento que não armazena? 
+
+```diff
++ A ideia do tmpfs é basicamente persistir dados na memória do seu host, mas esses dados não estão sendo escritos na camada de read-write. 
+```
+
+Eles estão sendo escritos diretamente na memória do host.
+
+Isso é importante, por exemplo, quando temos algum dado sensível que não queremos persistir na camada de read-write por questões de segurança talvez, mas queremos tê-los dentro de alguma maneira. Nesses casos podemos utilizar o tmpfs.
+
+Então esses dados não serão escritos na camada de read-write, e sim ficar em memória temporariamente.
+
+Então é uma questão de segurança que seria interessante também em alguns cenários como, por exemplo, arquivos de senha ou algum arquivo que você não quer carregar durante a execução como um todo e manter na camada de escrita.
+
+Então o tmpfs é basicamente isso. 
+
+Ele só funciona no host Linux. 
+
+Mas assim como todas as outras abordagens que já vimos, tanto de bind mount quanto de volume, ao invés de fazermos a parte de tmpfs com a flag --tmpfs, podemos utilizar também a flag --mount, seguindo uma ideia bem parecida com a do bind mount, em que definimos o tipo que vamos utilizar.
+
+#### flag --mount com tmpfs
+A ideia será a mesma: basta colocar o tipo como tmpfs. E o nosso destination nesse caso é o /app dentro do nosso container: docker run –it --mount type=tmpfs,detination=/app ubuntu bash.
+
+```
+docker run –it --mount type=tmpfs,detination=/app ubuntu bash
+```
+
+Se executarmos isso e fizermos um ls, mais uma vez está o nosso “/app” temporário, porque o fundo está verde, assim como nosso tmp. 
+
+Se criarmos um arquivo com touch app/um-arquivo-qualquer e fizermos um ls app/, temos nosso arquivo. 
+
+Só que se criarmos um novo container de novo, não vai ter nenhuma informação dentro do nosso app.
+
+Então essa é a ideia do tmpfs. 
+
+Caso queiramos colocar algum dado temporário que não deve ser armazenado de maneira alguma na camada de read-write, podemos utilizar o tmpfs também.
+
+A ideia é basicamente essa. Na questão de persistência de dados no fim das contas nós vimos três possibilidades. Temos o tmpfs, que acabamos de ver.
+
+Temos os bind mounts, que foi o primeiro que vimos e que fazem um bind, uma ligação direta entre o sistema de pastas do nosso host e do nosso container.
+
+E também os volumes, que são a solução recomendada, inclusive, para utilização, porque eles são gerenciados pelo Docker e conseguimos ter um controle maior sobre isso, sem depender diretamente da estrutura de pastas do nosso host efetivamente.
+
+Essa parte de persistência de dados nós terminamos por aqui.
+
