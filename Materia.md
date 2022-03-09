@@ -1,9 +1,9 @@
 # Docker: Criando e gerenciando containers
 iniciado em 01/03/2022
 
-terminado em ANDAMENTO
+terminado em 09/03/2022
 
-[certificate]() 
+[certificate](https://cursos.alura.com.br/certificate/2551c006-383c-4e48-8c4c-f5fabf27bae5) 
 
 Table of contents
 - [Docker: Criando e gerenciando containers](#docker-criando-e-gerenciando-containers)
@@ -92,6 +92,33 @@ Table of contents
     - [utilizando tmpfs (somente linux)](#utilizando-tmpfs-somente-linux)
       - [flag --tmpfs](#flag---tmpfs)
       - [flag --mount com tmpfs](#flag---mount-com-tmpfs)
+    - [o que aprendemos?](#o-que-aprendemos-3)
+    - [conhecendo a rede bridge](#conhecendo-a-rede-bridge)
+      - [docker inspect](#docker-inspect-1)
+      - [bridge](#bridge)
+      - [docker network](#docker-network)
+    - [criando uma rede bridge](#criando-uma-rede-bridge)
+      - [nomeando um container - flag --name](#nomeando-um-container---flag---name)
+      - [criando uma user defined network - docker network create](#criando-uma-user-defined-network---docker-network-create)
+      - [criar um container com nome personalizado e rede propria](#criar-um-container-com-nome-personalizado-e-rede-propria)
+    - [as redes none e host](#as-redes-none-e-host)
+      - [rede 'none'](#rede-none)
+      - [rede 'host'](#rede-host)
+    - [Comunicando aplicaçao e banco](#comunicando-aplicaçao-e-banco)
+    - [o que aprendemos?](#o-que-aprendemos-4)
+    - [conhecendo o Docker Compose](#conhecendo-o-docker-compose)
+      - [docker compose no windows](#docker-compose-no-windows)
+      - [docker compose no linux](#docker-compose-no-linux)
+    - [definindo os serviços](#definindo-os-serviços)
+      - [docker compose up](#docker-compose-up)
+    - [complementando o Compose](#complementando-o-compose)
+      - [depends on](#depends-on)
+      - [docker-compose ps](#docker-compose-ps)
+      - [docker-compose down](#docker-compose-down)
+      - [seçao deploy](#seçao-deploy)
+      - [docker swarm](#docker-swarm)
+    - [o que aprendemos?](#o-que-aprendemos-5)
+    - [docker commands](#docker-commands)
   
 
 ## Conhecendo o problema
@@ -1930,3 +1957,877 @@ E também os volumes, que são a solução recomendada, inclusive, para utiliza�
 
 Essa parte de persistência de dados nós terminamos por aqui.
 
+### o que aprendemos?
+* quando containers sao removidos, nossos dados sao perdidos
+* podemos persistir dados em definitivo atraves de volumes e bind mounts
+* bind mounts dependem da estrutura de pastas do host
+* volumes sao gerenciados pelo docker
+* tmpfs armazenam dados em memoria volatil
+
+### conhecendo a rede bridge
+Voltando um pouco, lembra que nós vimos sobre a questão de como os containers são isolados em relação ao nosso host e como precisamos nos preocupar em como eles vão se comunicar?
+
+Porque no fim das contas estávamos debatendo aquela questão de que um sistema complexo é composto por diversas aplicações atualmente.
+
+Então pode ser que tenhamos uma aplicação Java se comunicando com uma C#, que se comunica com uma Nginx. Ou podemos pensar num caso clássico de uma aplicação back-end se comunicando com um servidor de banco de dados, por exemplo.
+
+Então se os containers estão isolados, como podemos lidar com essa questão da comunicação entre containers?
+
+Se voltarmos naquela questão dos namespaces, nós temos toda aquela parte que já provê isolamento para nós nas interfaces de rede. Mas como será que isso funciona dentro do Docker?
+
+Vamos voltar ao nosso terminal. E nesse momento podemos testar o nosso experimento clássico de execução de um container Ubuntu. Então vou fazer docker run –it Ubuntu bash. E vou colocar também um bash para executarmos.
+
+O que vai acontecer nesse momento? Já sabemos que o container vai ficar em execução. Mas eu vou abrir um novo terminal com um docker ps. Temos o nosso container que acabou de subir.
+
+#### docker inspect
+Existe um comando interessante com que podemos inspecionar as configurações, os detalhes de um container quando ele já está em execução ou até mesmo em outras ocasiões também. É o docker inspect. Colocando o ID desse container e dando um “Enter”, ele vai dar diversos detalhes.
+
+```
+docker inspect 1233sad2123
+```
+
+#### bridge
+Já no final tem a parte que estamos procurando, que é a parte de networks, de redes. E dentro desse conjunto de redes ele tem uma chamada bridge que tem diversas configurações.
+
+Mas em que momento nós configuramos essa rede? A questão é que nós não configuramos. Quem fez isso foi o próprio Docker.
+
+Vamos fazer uma comparação. Eu vou abrir mais um terminal e executar mais um container do Ubuntu com docker run –it ubuntu bash. E vamos comparar a saída desses outputs de rede.
+
+Então vou abrir mais terminal e fazer um docker ps e um docker inspect com o ID desse outro Ubuntu que acabamos de criar.
+
+```diff
++ Repara que se colocarmos lado a lado, toda essa parte de rede que ele está mostrando é igual. 
++ A parte de IPAMconfig como null, o network ID é igual.
+```
+
+Então todos esses pontos dentro do nosso sistema, exceto o endpoint ID e o IP address, são iguais. 
+
+Por quê? 
+
+```diff
++ Isso significa então que esses containers no fim das contas estão na mesma rede.
+```
+
+Mas será que conseguimos fazer algum tipo de comunicação entre eles, já que eles estão na mesma rede, que é um driver que o Docker está colocando para nós? Antes de pensar nisso, precisamos entender o que é a bridge.
+
+#### docker network
+Então vou abrir mais um terminal para ficar tudo bem separado o que estamos fazendo. E existe, dentro de todo o arsenal de comandos que o Docker provê para nós, uma parte sobre redes. Temos o docker run, o docker images, o docker build, e temos o docker network.
+
+E como eu faço para listar as redes que o Docker já tem no sistema, criado de maneira automática? 
+
+Basta eu fazer docker network ls. 
+
+```
+docker network ls
+```
+
+Ele mostra três redes para nós, uma se chama bridge, que tem seu ID, o driver bridge, e um escopo local. 
+
+Tem uma que se chama host, que usa o driver host e o escopo também é local. 
+
+E no fim das contas também temos uma última, que se chama none, que poderíamos não colocar nenhuma rede dentro do nosso container.
+
+Mas como isso vai funcionar no fim das contas? O que isso tudo significa e por que precisamos nos preocupar com isso?
+
+Se compararmos nossos IDs, pegando um dos meus inspects, nós temos que o ID da rede começa com 80a1db. Na sua máquina vai ser diferente. E repara que é exatamente a mesma rede que estamos vendo no nosso network ls.
+
+Isso significa que os nossos dois containers que criamos sem definir nenhuma rede foram colocados nessa rede padrão bridge, com esse nome e utilizando esse driver também de bridge.
+
+E o que isso significa? Significa que se, por exemplo, eu tentar acessar algum desses containers, como o container de ID 8ea67 e fizer um docker ps e um docker inspet, ele tem o IP address dele, que é 172.17.0.2.
+
+E se fizermos um docker ps no outro, que começa com b02, e fizermos um docker inspect, nós temos o IP address de 172.17.0.3.
+
+Então se eu tentar, por via das dúvidas, acessar o meu b02, cujo IP address termina com 03, e por algum motivo eu tentar comunicá-lo com o outro via IP, eu devo conseguir, já que eles estão na mesma interface de rede.
+
+Só que como é que isso vai funcionar? Como estamos usando uma imagem do Ubuntu, bem provavelmente, caso tentemos executar algum ping, ele não vai conseguir.
+
+Então é a velha etapa: nós precisaríamos usar uma imagem base que já contém o ping ou podemos simplesmente fazer apt-get update, e depois instalamos o ping para fazer esse experimento.
+
+Existem imagens que já vêm com ping, mas como estamos padronizando os nossos primeiros testes com a imagem do Ubuntu, para mantermos o padrão vale nós continuarmos com toda essa parte de utilizar o Ubuntu.
+
+Existem outras imagens voltadas para essa parte de teste de rede e afins que também você pode consultar no Docker Hub, mas como eu falei, só na questão de ping mesmo nós vamos fazer esses testes.
+
+Então ele vai atualizar os pacotes rapidamente e quando ele terminar vamos instalar o pacote do ping para que consigamos fazer essa comunicação. 
+
+Nós fizemos o apt-get update, e logo depois para agilizar eu já executei o comando de instalação também, que foi apt-get install iputils-ping.
+
+Se eu der um “Enter” ele já vai ter instalado. Mas a ideia é só para fazermos a instalação do ping. Então se eu tentar agora dar um ping no 172.17.0.2, que no caso é o de início 8ea, ele vai fazer a comunicação sem nenhum problema.
+
+Então estamos conseguindo fazer essa comunicação entre containers via IP. 
+
+Mas quais são os problemas que isso pode levantar? 
+
+Porque estávamos fazendo uma comunicação diretamente via IP. 
+
+Mas já vimos que os containers estão suscetíveis a reiniciar, a serem recriados e afins. 
+
+E isso não vai garantir que o contêiner vai ter sempre o mesmo IP. 
+
+Então teremos uma conexão muito instável nesse sentido.
+
+Precisamos ter uma maneira mais certa de fazer isso, como, por exemplo, via um DNS, talvez um hostname seria interessante.
+
+Mas como vamos entender isso? 
+
+Nós já entendemos primeiro o que são as redes, vimos que podemos containers que estão na mesma rede.
+
+Mas vamos aprofundar isso um pouco mais vendo a questão de como podemos criar a nossa própria rede e como ela vai se comportar nesse sentido.
+
+### criando uma rede bridge
+Como podemos fazer para ter uma comunicação mais estável entre containers? 
+
+Porque vimos que o IP é uma coisa que não podemos garantir.
+
+Mas vamos ver um pouco a nossa coluna de informações sobre o container. 
+
+Eu removi todos os containers com nosso comando clássico que já vimos anteriormente de docker container rm $(docker ps -aq) --force.
+
+Agora eu vou mais uma vez fazer docker run –it ubuntu bash e vou abrir um novo terminal. 
+
+Se eu der um docker ps, que informação eu poderia ter que seria mais estável do que um IP?
+
+Eu poderia utilizar, por exemplo, o nome. 
+
+Talvez você esteja se perguntando, e com total razão: esse nome não é gerado de maneira aleatória? 
+
+Por exemplo, agora é o “angry_keller”. 
+
+Como teremos isso de maneira estável, como conseguiremos identificar isso?
+
+Nós podemos simplesmente definir os nossos próprios nomes para os containers, porque até então nós não fizemos isso. 
+
+Quem fez essa criação de nome para nós foi o próprio Docker.
+
+#### nomeando um container - flag --name
+Então se eu voltar em algum dos outros terminais e der mais uma vez um docker rm com o nosso comando de remover todos os containers, o que eu posso fazer é, no momento da execução de um container, definir um nome para ele com a flag --name.
+
+Por exemplo, vou dar o nome de “ubuntu1” para o container: docker run -it --name ubuntu1. E eu quero executá-lo com a imagem do Ubuntu e o comando bash, então docker run -it --name ubuntu1 ubuntu bash.
+
+```
+docker run -it --name ubuntu1 ubuntu bash
+```
+
+Mas isso será o suficiente para conseguirmos comunicar dois containers via host name? 
+
+Não. 
+
+Nós ainda precisamos dar um passo além.
+
+Qual vai ser esse passo? 
+
+Se olharmos o nosso docker network ls, nós temos as redes que já são padrão do Docker: a bridge, a host e a none. 
+
+```diff
++ Mas para que consigamos fazer a comunicação entre containers via hostname nós precisamos criar nossa própria rede.
+```
+
+E como criamos nossa própria rede? Deve ser muito difícil. Na verdade é bem fácil. 
+
+#### criando uma user defined network - docker network create
+Basta executarmos o comando docker network create.
+
+Queremos criar uma rede que faça o papel de bridge, que é a rede padrão, mas será uma própria nossa para fazer a ponte entre os containers utilizando esse driver de bridge. 
+
+Então docker network create --driver bridge minha-bridge. O nome dela é o último parâmetro que é passado.
+
+```
+docker network create --driver bridge minha-bridge
+```
+
+#### criar um container com nome personalizado e rede propria
+E agora nesse momento em que vamos criar o nosso container, além de definir o nome dele, vamos definir também a rede através do --network minha-bridge.
+
+```
+docker run -it --name ubuntu1 --network minha-bridge ubuntu bash
+```
+
+E repara que se voltarmos ao outro terminal, fizemos docker ps e agora inspecionarmos esse container com docker inspect, ele vai mostrar que dentro da parte de network não está mais simplesmente aquela bridge. 
+
+Está a “minha-bridge”, que eu criei. 
+
+Tem as outras informações dele, o IP está como 172.19.0.2 e com esse nome de “ubuntu1”.
+
+Vamos agora tentar criar um outro container. 
+
+Vou dar um “Ctrl + L” e vamos criar um container dentro dessa mesma rede.
+
+Eu vou colocar um docker run -d porque não vamos nos preocupar com o terminal dele. 
+
+E vou colocar o nome de --name pong, só por uma piada que vai ser engraçada e que você já vai entender, 
+
+docker run -d --name pong --network minha-bridge ubuntu sleep 1d.
+
+Coloquei o sleep de um dia só para manter o container em execução, não vamos nos preocupar com o terminal dele. 
+
+Vou dar um “Enter”. 
+
+Ele criou. E agora se eu vier no terminal do meu ubuntu1, vamos fazer apt-get update de início. Ele vai fazer toda a atualização de repositórios e afins do sistema do meu container.
+
+Mas enquanto ele vai fazendo isso, se simplesmente fizermos um docker inspect no container que acabou de ser criado, que é o nosso pong, repara que assim como o nosso ubuntu1, ele está na rede “minha-bridge”, com um IP diferente. 
+
+Mas não estamos mais nos preocupado com o IP.
+
+Se fizermos um docker ps agora, temos o nosso ubuntu1 e o pong. 
+
+Então conseguimos definir os nomes agora, conseguimos ter um controle sobre isso.
+
+E no momento em que eu tentar agora comunicar esse meu ubuntu1 com o pong, a ideia vai ser que se eu fizer simplesmente o comando de comunicação diretamente ele deve funcionar.
+
+E agora vamos fazer o nosso teste final. 
+
+Vou dar um “Ctrl + L” mais uma vez e vou fazer um ping pong. 
+
+```
+ping pong
+```
+
+Era essa a grande piada que eu queria fazer com vocês, por isso que eu coloquei o nome de pong no container.
+
+E repara que ele está fazendo a comunicação para o IP inclusive do container. 
+
+Ele está mostrando que é a 172.19.0.3. 
+
+Se fizermos um docker ps e um docker inspect pong, veremos que é o 172.19.0.3.
+
+Conseguimos agora comunicar dois containers via host name com a user-defined bridge, a rede que nós definimos através de criação.
+
+Mas como nós saberíamos disso? 
+
+Isso é um tópico muito importante que está listado na documentação, em use bridge networks. 
+
+Ele fala de todos os processos, eu não tirei isso do além.
+
+Ele mostra que nas redes user-defined bridges, ou seja, 
+```diff
++ as redes que são criadas por usuários de bridge, a diferença é que elas provém essa resolução automática de DNS entre containers, 
+```
+que é basicamente o que nós estamos fazendo agora.
+
+Então conseguimos agora comunicar diferentes containers via host name. 
+
+É um pouco mais fácil manter essa comunicação agora. 
+
+E vamos entender outras questões sobre, por exemplo, o que é a rede host e a rede null para complementar nosso conhecimento, e depois vamos seguindo. 
+
+### as redes none e host
+Agora veremos como funcionam as duas redes restantes. 
+
+Vamos dar um docker network ls.
+
+Já vimos como funciona a bridge, e nós criamos nossa própria bridge também. 
+
+Mas vamos olhar como funciona a rede host, que utiliza o driver host, e a rede none, que utiliza o driver null.
+
+#### rede 'none'
+Vamos começar pela rede none, que utiliza o driver null. 
+
+Como é que ela funciona? 
+
+Vamos exemplificar para ver como realmente ela impacta a vida do nosso container.
+
+Vamos executar um docker run –d. Coloquei o -d porque não vamos nos preocupar com questão de terminal em modo interativo. Em seguida vou falar que meu container será executado na minha rede chamada none, que já existe: 
+
+```
+docker run -d --network none ubuntu sleep 1d
+```
+
+Vou executar a imagem do Ubuntu, e o comando que eu quero executar para o container se manter em execução é o sleep, como fizemos no início para manter o container em execução e não precisar travar o terminal para ele: docker run -d --network none ubuntu sleep 1d. Vou executar esse comando. Ele mostrou o ID completo do container.
+
+E se fizermos docker inspect nesse ID para vermos quais são as características desse container, repara que no final ele está falando que está utilizando agora o none e toda a descrição da rede desse none.
+
+Mas o que isso impactará diretamente nesse container? No fim das contas, 
+```diff
+- quando utilizamos o driver none, estamos simplesmente falando que esse container não terá qualquer interface de rede vinculada a ele. 
+- Ele ficou completamente isolado a nível de rede.
+```
+
+Nós não conseguimos fazer nenhum tipo de operação envolvendo a rede desse container, porque o driver dele é none, ele utiliza o driver null no fim das contas.
+
+O que precisamos fazer agora, caso queiramos fazer o contrário disso, por exemplo? 
+
+Queremos que nosso container tenha interface de rede, e já vimos como fazer com a bridge, mas de uma maneira um pouco mais prática em alguns casos. 
+
+Nós queremos fazer o contrário de não ter uma interface de rede, e sim ter uma interface de rede, mas vinculada ao nosso host, por exemplo.
+
+Vamos fazer uma leitura das nossa redes com docker network ls. 
+
+Nós temos a nossa rede que utiliza o driver host e possui também o nome host.
+
+E como vai funcionar agora? Vamos fazer praticamente o mesmo teste. 
+
+Se eu fizer um docker ps, eu vejo que não estou com mais nenhum container em execução além desse Ubuntu que eu acabei de criar.
+
+#### rede 'host'
+E agora eu vou fazer 
+
+docker run -d --network host aluradocker/app-node:1.0
+
+E antes do nome da imagem vou dizer que esse container será executado na rede host. 
+
+Vamos ver o que vai acontecer. 
+
+Vou copiar o ID do container e fazer docker inspect. 
+
+```diff
++ Agora no final ele está informando que está utilizando a rede host na saída desse inspect.
+```
+
+Só que o que isso muda na prática? 
+
+Agora eu vou simplesmente abrir uma nova aba do meu navegador e tentar acessar essa aplicação.
+
+Mas não como eu vou acessar se eu não fiz o mapeamento de portas como já aprendemos? 
+
+Se eu colocar “localhost” e definir qual porta eu quero acessar, vamos lembrar que a versão 1.0 da nossa aplicação app-node executava por padrão sempre na porta 3000.
+
+E depois nós parametrizamos as versões 1.1 e 1.2. Mas a 1.0 sempre era executada na porta 3000. 
+
+Então se no meu navegador eu tentar acessar a aplicação na porta 
+
+“localhost:3000”, 
+
+eu consigo.
+
+Mas por que eu consegui? 
+
+```diff
++ Porque nós simplesmente agora retiramos quaisquer isolamentos que tinham entre a interface de rede do container e do host. 
++ Porque utilizando o driver host nós estamos utilizando a mesma rede, a mesma interface do host que está hospedando esse container, por assim dizer.
+```
+
+Então caso tivesse alguma outra aplicação na minha porta 3000 com meu host em execução, eu não conseguiria fazer a utilização desse container dessa maneira, daria um problema de conflito de portas, porque a interface seria a mesma.
+
+### Comunicando aplicaçao e banco
+Agora vamos colocar um pouco de prática para vermos como funciona realmente a questão de comunicação de containers através da rede do Docker.
+
+Vamos fazer um docker images. 
+
+Até então nós temos imagens que vamos utilizar a partir de agora nesse vídeo, que eu já baixei com o comando docker pull. 
+
+Mas vou deixar o comando para você também baixar.
+
+Vou reexecutar, mas no caso ele não vai baixar porque eu já tenho, a imagem mongo na versão 4.4.6 e a “aluradocker/alura-books” na versão 1.0.
+
+```diff
++ Ênfase na versão 4.4.6 do mongo, e não na versão latest. 
+```
+
+Quando você for baixar a imagem do mongo você vai utilizar o comando 
+
+```
+docker pull mongo:4.4.6 
+```
+
+e dar o “Enter”. Então ele fará o download dessa versão em específico.
+
+É a mesma coisa para a imagem alura-books. Então vai ser 
+
+```
+docker pull aluradocker/alura-books:1.0
+```
+
+Agora o primeiro passo que precisamos dar é comunicar o container que será gerado pela imagem alura-books com um banco de dados que vai ser gerado pela imagem do mongo, com um container.
+
+Mas como é que faremos essa comunicação? 
+
+Através da rede do Docker. 
+
+Então de início eu vou fazer um docker run no meu banco de dados: 
+
+docker run mongo:4.4.6
+
+Mas ainda faltam alguns detalhes. Por exemplo, eu não quero travar o meu terminal, então eu vou executar em modo detached com a flag -d.
+
+Eu vou definir que a minha rede vai ser a “minha-bridge”, que foi a rede que criamos. Se fizermos um docker network ls veremos a rede que nós já criamos.
+
+Caso você tenha apagado, por favor, crie sua própria bridge com o comando docker network create --driver bridge minha-bridge. Se eu executar esse comando vai dar erro, porque a rede já existe. Mas a ideia é executar esse comando, caso você tenha apagado.
+
+E agora o que estamos fazendo é um docker run –d com o container nessa rede: 
+
+docker run -d --network minha-bridge mongo:4.4.6
+
+E o ponto agora é o seguinte: o nosso container de alura-books vai se comunicar com o banco de dados mongo. 
+
+E como eles estarão numa rede bridge criada por nós, ou seja, criada manualmente, a comunicação poderá ser feita via host name.
+
+Só que como será o host name que a nossa aplicação alura-books está buscando? Qual é o nome de banco que ela está buscando para se conectar?
+
+Para isso eu também vou disponibilizar para vocês o código-fonte da aplicação que foi usada como base para gerar a imagem que será usada para gerar esse container.
+
+```diff
+- Mas o que importa é que no arquivo de configuração dessa aplicação, no host ele está procurando por um host chamado “meu-mongo”. 
+```
+
+Então no momento em que essa imagem foi construída, esse arquivo estava definido dessa maneira.
+
+Isso significa que eu preciso que o host name, ou seja, o nome desse container, seja “meu-mongo”. 
+
+Então o comando vai ficar 
+
+```
+docker run -d --network minha-bridge --name meu-mongo mongo:4.4.6
+```
+
+E a partir de agora, se eu der um “Enter” nesse comando, ele vai criar o container.
+
+E agora eu preciso fazer o run do nosso alura-books. 
+
+Então 
+
+```
+docker run -d --network minha-bridge --name alurabooks -p 3000:3000 aluradocker/alura-books:1.0
+```
+
+E agora vamos adicionar os detalhes com os quais precisamos nos preocupar, como o -d; a rede, que precisa ser a mesma rede, para que os containers consigam se comunicar: 
+
+docker run -d --network minha-bridge aluradocker/alura-books:1.0.
+
+O nome nesse caso é irrelevante, porque a aplicação está procurando pelo banco, e não o contrário. 
+
+Não estou falando que sempre vai ser essa regra, mas nesse caso que estamos fazendo nós não precisamos nos preocupar com o nome desse container especificamente, então vou deixar como “alura-books”: 
+
+`docker run -d --network minha-bridge --name alurabooks aluradocker/alura-books:1.0´.
+
+E outro detalhe também é que precisamos fazer o mapeamento de portas, que vai ser a porta 3000 na porta 3000 também do nosso container: 
+
+`docker run -d --network minha-bridge --name alurabooks –p 3000:3000 aluradocker/alura-books:1.0´.
+
+Eu preciso fazer o mapeamento de portas, porque eu não estou e nem posso nesse caso utilizar a rede host. 
+
+Eu estou utilizando a rede “minha-bridge”. 
+
+Vou dar um “Enter” e ele vai executar.
+
+Vou abrir uma nova aba no meu navegador, e agora vamos fazer 
+
+“localhost:3000”, 
+
+que vai acessar a nossa aplicação. 
+
+E ela tem um endpoint, o “/seed”, que vai popular o banco. 
+
+E agora se atualizarmos a página, todos os dados do banco estão sendo carregados na nossa aplicação.
+
+Então a partir desse momento, se eu voltar ao terminal e simplesmente parar o container do meu mongo com o comando 
+
+docker stop meu-mongo
+
+, os dados no navegador vão sumir, porque a comunicação com o banco parou.
+
+Se eu voltar ao terminal e executar 
+
+docker start meu-mongo
+
+, fizer um seed novamente e recarregar a página, tudo volta ao normal.
+
+Então nós estabelecemos a comunicação entre dois containers que estão na mesma rede, e conseguimos ter um resultado real, bem próximo do que vemos no dia a dia de utilização de aplicações.
+
+Nós tivemos uma aplicação back-end, que também tem um front, se comunicando com o banco e trazendo os dados para o usuário no fim das contas.
+
+Só que precisamos levantar alguns questionamentos agora. 
+
+Será que a melhor maneira é fazermos a inicialização de containers sempre manualmente? 
+
+Porque eu tive que me preocupar em fazer o docker run de um, depois o docker run do outro.
+
+Será que quando vamos fazer as coisas realmente em produção nós sempre subimos tudo na mão? 
+
+É um ponto sobre o qual precisamos pensar. 
+
+### o que aprendemos?
+* o docker dispoe por padrao de tres redes: bridge, host e o none
+* a rede bridge é usada para comunicar containers em um mesmo host
+* redes bridges criadas manualmente permitem comunicaçao via hostname
+* a rede host remove o isolamento de rede entre o container e o host
+* a rede none remove a interface de rede do container
+* podemos criar redes com o comando docker network create
+
+### conhecendo o Docker Compose
+Agora vamos voltar a um problema que já tivemos anteriormente, mas vamos ver o que aconteceu.
+
+O que nós fizemos ainda há pouco? 
+
+Nós executamos aquele nosso container do aluradocker da imagem alura-books na versão 1.0 em conjunto com o mongo na versão 4.4.6.
+
+Para fazer isso nós precisamos de início executar o banco. 
+
+O comando que executamos foi o 
+
+docker run –d --network minha-bridge --name meu-mongo mongo:4.4.6
+
+E para executar nosso container do alura-books foi através do comando: 
+
+docker run –d --network minha-bridge --name alurabooks –p 3000:3000 aluradocker/alura-books:1.0
+
+E nós precisamos fazer tudo isso manualmente. 
+
+Nós precisamos ter definido qual era o comando que iríamos executar e definido a ordem que queríamos.
+
+Então vamos parar para pensar: qual foi a motivação inicial que tivemos no curso?
+
+Uma das questões é que podemos ter diversas aplicações se comunicando entre si para construir um sistema ainda mais complexo.
+
+Mas o que está acontecendo agora é que se nós crescermos muito a nossa aplicação, o que vai acabar acontecendo, em algum momento teremos que subir diversos containers manualmente.
+
+Sempre que quisermos parar um container teremos que fazer docker stop ou um docker rm para remover um a um. Então para cada container vai ser um comando que precisaremos executar, além de nos preocuparmos com toda a questão da pilha de execução que teremos com todos esses containers.
+
+Existe uma solução já desenvolvida pela empresa do próprio Docker que vai nos ajudar a resolver esse tipo de situação, que no caso é o Docker Compose.
+
+```diff
++ O Docker Compose nada mais é do que uma ferramenta de coordenação de containers. 
+```
+Não confunda com orquestração, são coisas diferentes.
+
+Então o Docker Compose vai nos auxiliar a executar, a compor, como o nome diz, diversos containers em um mesmo ambiente, através de um único arquivo. 
+
+Então vamos conseguir compor uma aplicação maior através dos nossos containers com o Docker Compose.
+
+E faremos isso através da definição de um arquivo yml, aquela extensão yml, ou yaml, caso você já tenha ouvido falar. 
+
+E nada mais é do que um tipo de estrutura que vamos seguir baseado em indentação do nosso arquivo.
+
+Nós vamos seguir mais ou menos essa receita de definir uma versão, quais serão os nossos serviços, e também como fazer toda a parte de rede e comunicação dos nossos containers, só que agora através de um único arquivo. 
+
+E conseguiremos coordenar isso diretamente dos comandos de como o Docker Compose faz isso.
+
+#### docker compose no windows
+Um pequeno adendo é que caso você esteja no Windows nesse momento, quando você instala o Docker você já tem nesse momento o Docker Compose.
+
+Então caso você execute 
+
+```
+docker-compose 
+```
+no seu terminal, a princípio ele vai dar o “erro”, mostrando todos os comandos que você pode executar. 
+
+Ele já fala que você poderá definir e executar aplicações de múltiplos containers com o Docker Compose.
+
+#### docker compose no linux
+Mas caso você esteja no Linux, como temos feito o curso desde o início, você precisará instalar o Docker Composer. 
+
+Se viermos no terminal, não vamos conseguir executar nada com o Docker Compose. 
+
+Ele não reconhece o comando docker-compose.
+
+E ele vai sugerir também a instalação através do snap ou do apt, mas nós não faremos isso. 
+
+Nós vamos seguir a documentação nesse caso.
+
+Então eu vou abrir uma nova aba e vamos fazer o processo de instalação. 
+
+Se eu digitar na barra de pesquisa “docker compose install Linux”, ele vai ter a documentação oficial que eu vou deixar para vocês também.
+
+https://docs.docker.com/compose/install/
+
+E caso você esteja no Windows e a instalação não tenha acontecido por algum motivo, é só marcar na página da documentação que você está utilizando o Windows. No nosso caso, estamos utilizando o Linux.
+
+Para instalar é bem simples, basta copiar o comando que ele fornece e voltar ao terminal. 
+
+```
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+```
+
+Vou fazer “Ctrl + L” para limpar e “Shift + Insert” para colar. 
+
+Vou colocar minha senha, você vai colocar a sua, claramente, e vou dar um “Enter”.
+
+Ele vai fazer todo o processo de baixar. 
+
+E logo depois precisamos tornar o nosso Docker Compose executável, dar a permissão para ele com o comando do chmod.
+
+```
+sudo chmod +x /usr/local/bin/docker-compose
+```
+
+Nesse momento vou abrir um terminal novo. 
+
+Se executarmos um docker-compose para executar, agora temos o mesmo output que tínhamos no Windows. 
+
+Ele vai definir múltiplos containers para executar uma aplicação com o Docker.
+
+Agora que entendemos o que é o Docker Compose, que será essa ferramenta de composição e de coordenação de containers, precisamos transformar o que fizemos anteriormente num ambiente agora distribuído dessa maneira com o Docker Compose. 
+
+### definindo os serviços
+Agora precisamos traduzir esses dois comandos que já executamos anteriormente para subir o nosso alura-books e também o comando para subir o nosso mongo. Nós vamos traduzir, por assim dizer, para essa estrutura yml.
+
+Seguiremos uma estrutura bem parecida com a que está na própria documentação. Vamos definir uma versão para o yml que vamos utilizar; vamos definir quais são os serviços. A diferença é que não seguiremos exatamente igual à documentação, mas grande parte será bem parecida.
+
+O que eu vou fazer nesse momento é abrir um novo terminal e criar uma nova pasta na área de trabalho, chamada “ymls”: 
+
+mkdir Desktop/ymls
+
+Eu vou acessá-la com cd Desktop/ymls/ e vou abrir o VS Code dentro dela. Você pode usar o seu editor de texto favorito.
+
+No VS Code, dentro dessa pasta eu vou criar um 
+
+“docker-compose.yml”
+
+Repara que o VS Code é inteligente o suficiente para saber que esse arquivo se trata de algo relacionado ao Docker, ele colocou até o símbolo da baleia ao lado do nome.
+
+Vou criar o arquivo e a ideia é que dentro desse arquivo nós configuremos o nosso yml. 
+
+Como vamos definir todas as configurações? 
+
+Eu vou simplesmente, como eu falei de início, definir a versão do yml que vamos utilizar, que será a 3.9, então version: “3.9”.
+
+```
+version: "3.9"  # optional since v1.27.0
+```
+
+E agora nós vamos definir os nossos serviços, que no fim das contas serão nossos containers. Então quais serão os nossos serviços? 
+
+Nós queremos repetir o que fizemos anteriormente, de subir o alura-books e o banco de dados.
+
+Então eu posso simplesmente colocar services:
+
+E nesse momento vamos definir que temos um serviço chamado mongodb, por exemplo, mas eu poderia dar o nome que eu quisesse.
+
+E esse serviço vai ter as peculiaridades dele. 
+
+Precisamos definir a partir de agora qual é a imagem que vamos utilizar para esse serviço, se queremos dar um nome para o container, se vamos colocá-lo em alguma rede.
+
+Nós queremos fazer isso. 
+
+Eu quero que a imagem que ele vai utilizar para esse serviço seja a do mongo na versão 4.4.6, que é a que fizemos na nossa execução. 
+
+Então image: mongo:4.4.6.
+
+Nós também queremos dar o nome do container de “meu-mongo”. 
+
+Então vamos colocar container_name: meu-mongo. 
+
+E queremos que ele esteja numa rede. 
+
+Não precisamos manter a minha-bridge. 
+
+Eu vou colocar uma rede chamada “compose-bridge”.
+
+Para a definição da rede eu faço networks:, dou um “Enter”, um “Tab” e um traço, para colocarmos o elemento dessa lista. 
+
+E vou colocar - compose-bridge.
+
+Então agora eu defini minha rede, o nome do meu container e a imagem que eu quero utilizar, que foi a mesma coisa que definimos anteriormente quando fizemos manualmente no terminal.
+
+
+```
+version: "3.9"  # optional since v1.27.0
+services:
+  mongodb:
+    image: mongo:4.4.6
+    container_name: meu-mongo
+    networks:
+      - compose-bridge
+```
+
+Agora eu preciso fazer a mesma coisa, só que para o meu alura-books. 
+
+Então vou quebrar mais uma linha, para ficar um pouco mais visível. 
+
+E eu vou definir o nosso serviço chamado alura-books. 
+
+E dentro dele eu vou utilizar a imagem: image: aluradocker/alura-books:1.0. 
+
+Depois o nome do container, que eu vou colocar como “alurabooks”: container_name: alurabooks. 
+
+Depois a rede, que precisa ser a mesma, então vou colocar compose-bridge.
+
+E agora também eu vou precisar colocar o mapeamento de portas que fizemos anteriormente. 
+
+Para definir as portas eu coloco ports:, e faço de maneira bem parecida com a rede: dou um “Enter”, um “Tab” e um traço e coloco a porta em que minha aplicação está executando, que é a 3000. 
+
+E eu quero que ela rode na minha máquina também na porta 3000, então - 3000:3000.
+
+Basicamente o que já definimos agora foi que o alurabooks está rodando dentro do container na porta 3000 e vai rodar no nosso host na porta 3000; definimos a imagem; a rede; e o nome.
+
+```
+version: "3.9"  # optional since v1.27.0
+services:
+  mongodb:
+    image: mongo:4.4.6
+    container_name: meu-mongo
+    networks:
+      - compose-bridge
+
+  alurabooks:
+    image: aluradocker/alura-books:1.0
+    container_name: alurabooks
+    networks:
+      - compose-bridge
+    ports:
+      - 3000:3000
+```
+
+Agora falta um pequeno detalhe, que é configurar essa rede, porque ela não existe até então. 
+
+Então o que precisamos fazer no final é, alinhado com a parte de services, colocar networks:, dar um “Enter” e definir a minha rede, que é a compose-bridge:.
+
+Vou dar mais um “Enter” e vou informar o driver dela, que vai ser o bridge: driver: bridge.
+
+```
+version: "3.9"  # optional since v1.27.0
+services:
+  mongodb:
+    image: mongo:4.4.6
+    container_name: meu-mongo
+    networks:
+      - compose-bridge
+
+  alurabooks:
+    image: aluradocker/alura-books:1.0
+    container_name: alurabooks
+    networks:
+      - compose-bridge
+    ports:
+      - 3000:3000
+
+networks:
+  compose-bridge:
+    driver: bridge
+```
+
+#### docker compose up
+E agora eu simplesmente vou abrir um terminal nesse diretório que eu já tenho, e vou executar o comando docker-compose up.
+
+```
+docker-compose up
+```
+
+Antes de executar esse comando vou fazer um ls para garantir que eu estou nesse diretório que o meu arquivo “docker-compose” foi criado com esse nome.
+
+Então eu vou colocar docker compose up. E ele vai criar. Não coloquei em modo detached para entendermos o que ele está fazendo. Ele está criando o banco.
+
+Ele já subiu todo o banco. E também, se formos subindo, conseguimos ver que ele mostra um output bem misturado, tanto do nosso “meu-mongo” quanto do nosso “alurabooks”. Tem toda essa questão deles sendo executados.
+
+Agora temos garantia de que está tudo em execução. Se voltarmos ao nosso navegador e executarmos “localhost:3000”, conseguimos acessar nossa aplicação. Populei o banco com um “/seed”, e se eu atualizar a página, está tudo aparecendo.
+
+Mas apesar de tudo ter funcionado, ainda tem mais detalhes que podemos ver sobre como isso tudo funcionou.
+
+Só que antes de terminar essa aula, dentro do terminal que nós executamos e está travado, eu vou dar um “Ctrl + C”. Repara que ele vai parar os dois containers, tanto o “alurabooks” quanto o “meu-mongo”. E se voltarmos ao navegador e atualizarmos a página com “F5”, veremos que ele já derrubou.
+
+### complementando o Compose
+O que mais seria interessante saber sobre o Docker Compose? 
+
+Uma coisa interessante é que no momento em que nós damos o docker-compose up, vimos que estamos subindo tudo de maneira meio indefinida.
+
+#### depends on
+Mas existe uma instrução que podemos colocar, em conjunto com a documentação que eu vou deixar o link também para vocês. 
+
+Nós podemos definir algumas instruções também.
+
+Além de todas que já colocamos, existe uma que se chama “depends_on”. 
+
+```diff
++ Ela expressa dependência entre serviços. 
+```
+
+No momento em que colocamos uma dependência de um serviço para outro, ele vai iniciar o serviço nessa ordem específica.
+
+No momento em que fizermos a execução, ele vai esperar o serviço subir. 
+
+Mas tem um pequeno detalhe: 
+
+```diff
+- o depends_on não vai esperar necessariamente a aplicação dentro do container estar pronta para receber as requisições. 
+```
+
+O que ele vai fazer é esperar o container ficar pronto, o que não significa que a aplicação dentro do container já está pronta.
+
+No momento em que viermos no nosso VS Code falarmos que agora nossa aplicação do alurabooks depende do nosso banco de dados, nós conseguimos fazer essa definição. 
+
+Então faço depends_on:, dou um “Enter”, um “Tab” e um - mongodb.
+
+```
+version: "3.9"  # optional since v1.27.0
+services:
+  mongodb:
+    image: mongo:4.4.6
+    container_name: meu-mongo
+    networks:
+      - compose-bridge
+
+  alurabooks:
+    image: aluradocker/alura-books:1.0
+    container_name: alurabooks
+    networks:
+      - compose-bridge
+    ports:
+      - 3000:3000
+    depends_on:
+      - mongodb
+
+networks:
+  compose-bridge:
+    driver: bridge
+```
+
+Nós podemos agora colocar um docker-compose up no diretório mais uma vez. 
+
+Antes vou salvar o arquivo no VS Code, vou dar um “Ctrl + L” no terminal e só então fazer docker-compose up.
+
+Ele vai fazer toda a definição. 
+
+Meu mongo já está ok. 
+
+E agora repara que apesar de no final ele ainda ter feito uma parte dividida entre as duas aplicações, teve uma redução em relação ao que tínhamos antes, de vários logs misturados. 
+
+Nesse caso ele teve um isolamento um pouco maior.
+
+Como esperamos o container do mongo ficar pronto, só tivemos no final uma sobreposição de informações. Mas agora nós expressamos essa dependência entre as nossas aplicações.
+
+E tem um outro detalhe. 
+
+Vamos dar um “Ctrl + C” mais uma vez. 
+
+Nós podemos executar em modo detached, como tínhamos mencionado, então docker-compose up -d. 
+
+```
+docker-compose up -d
+```
+
+Ele vai inicializar e pronto, ele não travar o nosso terminal.
+
+#### docker-compose ps
+Podemos fazer um docker-compose ps e ele vai mostrar os serviços que foram criados pelo Docker Compose de maneira mais organizada. 
+
+#### docker-compose down
+Podemos fazer também um docker-compose down para ele remover. 
+
+Ele vai fazer toda a etapa de remoção dos contêineres e da rede que foi criada.
+
+E só para finalizar essa definição toda de Docker Compose, o que é interessante sabermos e entendermos da documentação, para caso depois você for ler e não ficar perdido?
+
+https://docs.docker.com/compose/compose-file/compose-file-v3/
+
+#### seçao deploy
+Existem algumas coisas que seriam interessantes se conseguíssemos fazer, como a sessão de deploy, que permite fazer toda uma configuração de, por exemplo, número de réplicas: quantos containers de determinado serviço você quer; a parte de placement, como você vai ajustar isso a nível de paralelismo e tudo mais.
+
+```diff
+- Só que essa definição toda não funciona da maneira que estamos utilizando o Docker. 
+```
+
+#### docker swarm
+Ele fala que essas configurações só tomam efeito no momento em que estamos fazendo isso com um swarm, que vai funcionar só com docker stack deploy.
+
+Isso significa que da maneira que estamos atualmente essas configurações, caso você tente testar na sua máquina e não funcionem, é porque você não está utilizando o Docker em modo swarm.
+
+
+Sobre a parte da definição toda do Docker Compose e como ele funciona, é basicamente isso. 
+
+Conseguimos subir e descer os serviços, fazer todas as nossas definições.
+
+Inclusive, conseguimos também fazer a utilização de volumes. 
+
+Analogamente como fizemos com as redes, nós conseguiríamos definir, por exemplo, um volume para um container e fazer essa utilização também.
+
+Então caso você tenha alguma necessidade específica, a documentação é um lugar muito bom de se consultar. Eu falei para vocês de volumes, e podemos também fazer a utilização de volumes, com volumes -db para o que estamos definindo.
+
+Nós até poderíamos, por exemplo, subir uma imagem do Ubuntu e fazer sem nenhum problema como já fizemos anteriormente a definição de um serviço com um volume, com uma declaração bem parecida com a maneira que fizemos a nossa rede também.
+
+### o que aprendemos?
+* o docker compose é uma ferramenta de coordenaçao de containers
+* como instalar o docker compose no linux
+* como iniciar containers em conjunto com o comando docker-compose up
+* como criar um arquivo de composiçao e definir instruçoes de containers, redes e serviços
+
+### docker commands
+https://dockerlabs.collabnix.com/docker/cheatsheet/
